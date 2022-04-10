@@ -1,0 +1,12 @@
+/dcnm/interfaces/all_interfaces.json
+/dcnm/interfaces/interface.log
+/dcnm/interfaces/interface_descriptions.xlsx
+/dcnm/interfaces/interfaces_existing_conf.pickle
+/dcnm/interfaces/interfaces_will_change.json
+/dcnm/interfaces/leaves_change_desc.json
+/dcnm/interfaces/leaves_nochange_desc.json
+/dcnm/interfaces/mgmt_only.json
+/dcnm/interfaces/switches_configuration_policies.pickle
+/dcnm/interfaces/test.csv
+/dcnm/connection/
+/dcnm/inventory/
