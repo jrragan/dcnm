@@ -1065,6 +1065,28 @@ def get_orphanport_change(interface: tuple, detail: dict) -> bool:
     return False
 
 
+def verify_interface_change(dcnm, interfaces_will_change, **kwargs):
+    dcnm.get_interfaces_nvpairs(save_prev=True, **kwargs)
+    failed: set = set()
+    success: set = set()
+    for interface in interfaces_will_change:
+        if interfaces_will_change[interface] == dcnm.all_interfaces_nvpairs[interface]:
+            logger.debug("Verification confirmed for interface {}".format(interface))
+            logger.debug("{}".format(interfaces_will_change[interface]))
+            success.add(interface)
+        else:
+            logger.critical("Verification failed for interface {}".format(interface))
+            logger.critical("Desired configuration: {}".format(interfaces_will_change[interface]))
+            logger.critical("Configuration pulled from DCNM: {}".format(dcnm.all_interfaces_nvpairs[interface]))
+            failed.add(interface)
+    if failed:
+        logger.critical("verify_interface_change:  Failed configuring {}".format(failed))
+    else:
+        logger.debug("verify_interface_change: No Failures!")
+    return success, failed
+
+
+
 if __name__ == '__main__':
     SCREENLOGLEVEL = logging.INFO
     FILELOGLEVEL = logging.DEBUG
@@ -1197,3 +1219,6 @@ if __name__ == '__main__':
     print('=' * 40)
     print("FINISHED. GO GET PLASTERED!")
     print('=' * 40)
+
+    # Verify
+    verify_interface_change(dcnm, interfaces_will_change,  serial_numbers=['9Y04VBM75I8', '9A1R3QS819Z'])
