@@ -13,6 +13,14 @@ from pandas import read_excel
 
 from dcnm.interfaces.dcnm_connect import HttpApi
 
+def _dbg(header: str, data):
+    """ Output verbose data """
+
+    print("=" * 40)
+    print(header)
+    print("=" * 40)
+    pprint(data)
+
 
 class DCNMInterfacesParameterError(Exception):
     pass
@@ -554,7 +562,7 @@ class DcnmInterfaces(HttpApi):
 
         return local_all_interfaces_nvpairs
 
-    def get_interfaces_nvpairs(self, serial_numbers: Union[list, tuple],
+    def get_interfaces_nvpairs(self, serial_numbers: Optional[Union[list, tuple]]=None,
                                interface: Optional[str] = None,
                                policy: Optional[Union[str, list[str]]] = None,
                                config: Optional[Union[str, list[str]]] = None,
@@ -1219,7 +1227,7 @@ def get_orphanport_change(interface: tuple, detail: dict) -> bool:
     return False
 
 
-def verify_interface_change(dcnm, interfaces_will_change, **kwargs) -> tuple[tuple, tuple]:
+def verify_interface_change(dcnm: DcnmInterfaces, interfaces_will_change: dict, **kwargs) -> tuple[set, set]:
     dcnm.get_interfaces_nvpairs(save_prev=True, **kwargs)
     failed: set = set()
     success: set = set()
@@ -1241,16 +1249,11 @@ def verify_interface_change(dcnm, interfaces_will_change, **kwargs) -> tuple[tup
 
 
 def push_to_dcnm(dcnm: DcnmInterfaces, interfaces_to_change: dict, verbose: bool=True) -> tuple:
-    if verbose:
-        print()
-        print('=' * 40)
-    # make changes
+     # make changes
     success: set
     failure: set
     if verbose:
-        print('=' * 40)
-        print("Putting changes to dcnm")
-        print('=' * 40)
+        _dbg("Putting changes to dcnm", " ")
     success, failure = dcnm.put_interface_changes(interfaces_to_change)
     if failure:
         print()
@@ -1261,27 +1264,17 @@ def push_to_dcnm(dcnm: DcnmInterfaces, interfaces_to_change: dict, verbose: bool
         print('*' * 60)
         print()
         print()
-    if verbose:
-        print('=' * 40)
-        print('Deploying changes to switches')
-        print('=' * 40)
     return success
 
 
 def deploy_to_fabric(dcnm: DcnmInterfaces, deploy, verbose: bool=True):
-    deploy_list: list
-    deploy_list = DcnmInterfaces.create_deploy_list(deploy)
+    deploy_list: list = DcnmInterfaces.create_deploy_list(deploy)
+    if verbose:
+        _dbg('Deploying changes to switches', " ")
     if dcnm.deploy_interfaces(deploy_list):
         logger.debug('successfully deployed to {}'.format(deploy))
         if verbose:
-            print()
-            print()
-            print('*' * 60)
-            print('!!Successfully Deployed Config Changes to Switches!!')
-            print(deploy)
-            print('*' * 60)
-            print()
-            print()
+            _dbg('!!Successfully Deployed Config Changes to Switches!!', deploy)
     else:
         logger.critical("Failed deploying to {}".format(deploy))
         print()

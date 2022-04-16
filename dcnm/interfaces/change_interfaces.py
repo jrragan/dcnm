@@ -7,7 +7,7 @@ from pprint import pprint
 from time import strftime, gmtime
 
 from dcnm.interfaces.dcnm_interfaces import DcnmInterfaces, read_existing_descriptions, get_desc_change, get_cdp_change, \
-    get_orphanport_change, get_interfaces_to_change, push_to_dcnm, deploy_to_fabric, verify_interface_change
+    get_orphanport_change, get_interfaces_to_change, push_to_dcnm, deploy_to_fabric, verify_interface_change, _dbg
 
 
 def command_args() -> argparse.Namespace:
@@ -75,6 +75,7 @@ def command_args() -> argparse.Namespace:
                         const=False)
     dryrun.set_defaults(dryrun=True)
 
+    logger.debug(parser.parser_args())
     return parser.parse_args()
 
 
@@ -110,20 +111,24 @@ class DCNMValueError(Exception):
 
 def _normal_deploy(args, dcnm):
     # get serial numbers
-    serials: list = _get_sns(args)
-    if not serials:
-        logger.critical("No Serial Numbers Provided!")
-        raise DCNMValueError("No Serial Numbers Provided!")
-    if args.verbose: print(serials)
+    serials = None
+    if not args.all:
+        serials: list = _get_sns(args)
+        if not serials:
+            logger.critical("No Serial Numbers Provided!")
+            raise DCNMValueError("No Serial Numbers Provided!")
+        if args.verbose: _dbg("switch serial numbers provided", serials)
     # get interface info for these serial numbers
     dcnm.get_interfaces_nvpairs(serial_numbers=serials)
-    if args.verbose: pprint(dcnm.all_interfaces_nvpairs)
+    if args.verbose: _dbg("interfaces details and nvpairs", dcnm.all_interfaces_nvpairs)
     # get role and fabric info for these serial numbers
-    dcnm.get_switches_by_serial_number(serial_numbers=serials)
+    if args.all:
+        dcnm.get_all_switches()
+    else:
+        dcnm.get_switches_by_serial_number(serial_numbers=serials)
     if args.verbose:
-        print("=" * 40)
-        print(len(dcnm.all_leaf_switches.keys()))
-        print(dcnm.all_leaf_switches.keys())
+        _dbg("number of leaf switches", len(dcnm.all_leaf_switches.keys()))
+        _dbg("leaf switches", dcnm.all_leaf_switches.keys())
     if args.description:
         if not args.excel:
             dcnm.get_switches_policies(templateName='switch_freeform\Z',
@@ -132,23 +137,21 @@ def _normal_deploy(args, dcnm):
                 dcnm.all_switches_policies,
                 r"interface\s+([a-zA-Z]+\d+/?\d*)\n\s+description\s+(.*)")
             if args.verbose:
-                print("=" * 40)
-                pprint(dcnm.all_switches_policies)
-                print("=" * 40)
-                pprint(existing_descriptions_from_policies)
+                _dbg("switch policies", dcnm.all_switches_policies)
+                _dbg("existing description from policies", existing_descriptions_from_policies)
             policy_ids: set = {c.policyId for c in existing_descriptions_from_policies}
-            if args.verbose: print(policy_ids)
+            if args.verbose: _dbg("policy ids", policy_ids)
             # delete the policy
             dcnm.delete_switch_policies(list(policy_ids))
             existing_descriptions: dict[tuple, str] = {k: v for c in existing_descriptions_from_policies for k, v in
                                                        c.info.items()}
-            if args.verbose: pprint(existing_descriptions)
+            if args.verbose: _dbg("existing descriptions from switch policies", existing_descriptions)
             with open(args.pickle, 'wb') as f:
                 dump(dcnm.all_switches_policies, f)
         else:
             existing_descriptions = read_existing_descriptions(args.excel)
-            if args.verbose: print(existing_descriptions)
-    changes_to_make: list = []
+            if args.verbose: _dbg("existing descriptions from file", existing_descriptions)
+    changes_to_make: list[tuple] = []
     if args.description: changes_to_make.append(
         (get_desc_change, {'existing_descriptions': existing_descriptions}, False))
     if args.cdp: changes_to_make.append((get_cdp_change, {'mgmt': args.mgmt}, False))
@@ -157,33 +160,43 @@ def _normal_deploy(args, dcnm):
     with open(args.icpickle, 'wb') as f:
         dump(interfaces_existing_conf, f)
     if args.verbose:
-        print('=' * 40)
-        print()
-        pprint(interfaces_will_change)
+        _dbg("interfaces to change", interfaces_will_change)
     success: tuple = push_to_dcnm(dcnm, interfaces_will_change, args.verbose)
     deploy_to_fabric(dcnm, success, args.verbose)
     # Verify
     success, failure = verify_interface_change(dcnm, interfaces_will_change, serial_numbers=serials)
     if args.verbose:
         if failure:
-            pprint("verify_interface_change:  Failed configuring {}".format(failure))
+            _dbg("failure verifying following interfaces", "verify_interface_change:  Failed configuring {}".format(failure))
         else:
-            pprint("verify_interface_change: No Failures!")
+            _dbg("verify_interface_change: No Failures!")
 
 
 def _fallback(args, dcnm):
-    with open(args.icpickle, 'rb') as f:
-        interfaces_existing_conf = load(f)
-    if args.verbose: pprint(interfaces_existing_conf)
+    file_path = pathlib.Path(args.icpickle)
+    if file_path.is_file():
+        with open(args.icpickle, 'rb') as f:
+            interfaces_existing_conf = load(f)
+    else:
+        logger.critical("Error: pickle file not found")
+        if args.verbose: _dbg("Pickle file containing original interface configs not found", args.icpickle)
+        raise DCNMFileError("Error: input file not found")
+    if args.verbose: _dbg("these interface configs will be restored", interfaces_existing_conf)
     success = push_to_dcnm(dcnm, interfaces_existing_conf)
     deploy_to_fabric(dcnm, success)
     if args.description:
-        with open(args.pickle, 'rb') as f:
-            interface_desc_policies: dict[str, list] = load(f)
-            for serial_number in interface_desc_policies:
-                for policy in interface_desc_policies[serial_number]:
-                    dcnm.post_new_policy(policy)
-        if args.verbose: pprint(interface_desc_policies)
+        file_path = pathlib.Path(args.pickle)
+        if file_path.is_file():
+            with open(args.pickle, 'rb') as f:
+                interface_desc_policies: dict[str, list] = load(f)
+                if args.verbose: _dbg("these switch policies will be restored", interface_desc_policies)
+                for serial_number in interface_desc_policies:
+                    for policy in interface_desc_policies[serial_number]:
+                        dcnm.post_new_policy(policy)
+        else:
+            logger.critical("Error: pickle file not found")
+            if args.verbose: _dbg("Pickle file containing original interface configs not found", args.pickle)
+            raise DCNMFileError("Error: pickle file not found")
 
 
 if __name__ == '__main__':
