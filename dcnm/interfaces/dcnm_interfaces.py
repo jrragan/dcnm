@@ -1172,10 +1172,10 @@ def get_desc_change(interface: tuple, detail: dict, existing_descriptions: dict[
     return False
 
 
-def get_cdp_change(interface: tuple, detail: dict) -> bool:
+def get_cdp_change(interface: tuple, detail: dict, mgmt: bool = True) -> bool:
     logger.debug("start get_cdp_change: interface {}".format(interface))
     logger.debug("detail: {}".format(detail))
-    if 'mgmt' in interface[0] and detail['interfaces'][0]['nvPairs']['CDP_ENABLE'] == 'true':
+    if mgmt and 'mgmt' in interface[0] and detail['interfaces'][0]['nvPairs']['CDP_ENABLE'] == 'true':
         detail['interfaces'][0]['nvPairs']['CDP_ENABLE'] = 'false'
         logger.debug("interface: {}, changing cdp".format(interface))
         logger.debug("CDP_ENABLE: {}".format(detail['interfaces'][0]['nvPairs']['CDP_ENABLE']))
@@ -1219,7 +1219,7 @@ def get_orphanport_change(interface: tuple, detail: dict) -> bool:
     return False
 
 
-def verify_interface_change(dcnm, interfaces_will_change, **kwargs):
+def verify_interface_change(dcnm, interfaces_will_change, **kwargs) -> tuple[tuple, tuple]:
     dcnm.get_interfaces_nvpairs(save_prev=True, **kwargs)
     failed: set = set()
     success: set = set()
@@ -1240,15 +1240,17 @@ def verify_interface_change(dcnm, interfaces_will_change, **kwargs):
     return success, failed
 
 
-def push_to_dcnm(dcnm, interfaces_to_change):
-    print()
-    print('=' * 40)
+def push_to_dcnm(dcnm: DcnmInterfaces, interfaces_to_change: dict, verbose: bool=True) -> tuple:
+    if verbose:
+        print()
+        print('=' * 40)
     # make changes
     success: set
     failure: set
-    print('=' * 40)
-    print("Putting changes to dcnm")
-    print('=' * 40)
+    if verbose:
+        print('=' * 40)
+        print("Putting changes to dcnm")
+        print('=' * 40)
     success, failure = dcnm.put_interface_changes(interfaces_to_change)
     if failure:
         print()
@@ -1259,25 +1261,27 @@ def push_to_dcnm(dcnm, interfaces_to_change):
         print('*' * 60)
         print()
         print()
-    print('=' * 40)
-    print('Deploying changes to switches')
-    print('=' * 40)
+    if verbose:
+        print('=' * 40)
+        print('Deploying changes to switches')
+        print('=' * 40)
     return success
 
 
-def deploy_to_fabric(dcnm, deploy):
+def deploy_to_fabric(dcnm: DcnmInterfaces, deploy, verbose: bool=True):
     deploy_list: list
     deploy_list = DcnmInterfaces.create_deploy_list(deploy)
     if dcnm.deploy_interfaces(deploy_list):
         logger.debug('successfully deployed to {}'.format(deploy))
-        print()
-        print()
-        print('*' * 60)
-        print('!!Successfully Deployed Config Changes to Switches!!')
-        print(deploy)
-        print('*' * 60)
-        print()
-        print()
+        if verbose:
+            print()
+            print()
+            print('*' * 60)
+            print('!!Successfully Deployed Config Changes to Switches!!')
+            print(deploy)
+            print('*' * 60)
+            print()
+            print()
     else:
         logger.critical("Failed deploying to {}".format(deploy))
         print()
@@ -1353,7 +1357,7 @@ if __name__ == '__main__':
     pprint(existing_descriptions)
     interfaces_will_change, interfaces_existing_conf = \
         get_interfaces_to_change(dcnm, [(get_desc_change, {'existing_descriptions': existing_descriptions}, False),
-                                        (get_cdp_change, None, False),
+                                        (get_cdp_change, {'mgmt': False}, False),
                                         (get_orphanport_change, None, True)])
 
     print('=' * 40)
