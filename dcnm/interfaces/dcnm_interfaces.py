@@ -1120,13 +1120,13 @@ class DcnmInterfaces(HttpApi):
         response = self.get(path)
         self.fabrics[fabric] = json.loads(response['MESSAGE'])
 
-    def post_new_policy(self, details: str):
+    def post_new_policy(self, details: str) -> bool:
         """
 
         :param details: policy id to deploy
         :type details: str
-        :return:
-        :rtype:
+        :return: True if successful, False otherwise
+        :rtype: bool
 
         {
         "id": 582700,
@@ -1171,6 +1171,28 @@ class DcnmInterfaces(HttpApi):
             logger.debug(details)
             return False
         return True
+
+    def get_switches_status(self, serial_numbers=Optional[Union[str, list[str]]]) -> dict[str, str]:
+        local_status: dict[str, list] = {}
+        result_status: dict[str, str] = {}
+        if isinstance(serial_numbers, str):
+            serial_numbers = [serial_numbers]
+        for serial_number in serial_numbers:
+            fabric: str = self.all_leaf_switches.get(serial_number) or self.all_notleaf_switches.get(serial_number)
+            if not fabric:
+                fabric = self.get_switch_fabric(serial_number)
+            if fabric in local_status:
+                continue
+            if fabric not in self.fabrics:
+                self.get_fabric_details(fabric)
+            fabric_id: str = self.fabrics[fabric]['id']
+            path = f'control/status?entityTypeFilter=SWITCH&fabricId={fabric_id}'
+            response = self.get(path)
+            local_status[fabric] = json.loads(response['MESSAGE'])
+        for status in sum(local_status.values(), []):
+            if status['entityName'] in serial_numbers:
+                result_status[status['entityName']] = status['status']
+        return result_status
 
     @staticmethod
     def _check_patterns(patterns: list[Union[str, tuple]], string_to_check: Union[str, dict]) -> bool:
