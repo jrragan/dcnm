@@ -224,7 +224,7 @@ class HttpApi:
                 else:
                     response = self.connection.request(method, url, data=data,
                                                        headers=local_headers, timeout=self.timeout, verify=self.verify, **kwargs)
-                logger.debug(response)
+                logger.debug("send_request: response: {}".format(response))
                 if response.status_code == 401:
                     self._auth = False
                     del (self.headers["Dcnm-Token"])
@@ -241,12 +241,13 @@ class HttpApi:
             eargs = e.args[0]
             exc_type, exc_value, exc_traceback = sys.exc_info()
             stacktrace = traceback.extract_tb(exc_traceback)
-            logger.debug(
+            logger.error(
                 "send_request: response {}".format(eargs))
-            logger.debug(sys.exc_info())
-            logger.debug(stacktrace)
+            logger.error(sys.exc_info())
+            logger.error(stacktrace)
             if isinstance(eargs, dict) and eargs.get("METHOD"):
                 return eargs
+            logger.debug("Failure: send_request: {}".format(str(e)))
             raise ConnectionError(str(e))
         return info
 
@@ -293,6 +294,7 @@ class HttpApi:
         info['MESSAGE'] = msg
         info['DATA'] = json_respond_data
 
+        logger.debug("_return_info: {}".format(info))
         return info
 
     # def handle_httperror(self, exc):
