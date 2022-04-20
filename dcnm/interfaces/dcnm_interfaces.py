@@ -927,7 +927,7 @@ class DcnmInterfaces(HttpApi):
             policies = list(policies)
         elif not isinstance(policies, list):
             raise DCNMPolicyDeployError("must provide a list of policy ids")
-        logger.debug("deploying policies {}".format(policies))
+        logger.info("deploying policies {}".format(policies))
         info = self.post(path, data=policies)
         if info["RETURN_CODE"] != 200:
             logger.critical("ERROR: deploy_policies: DEPLOY OF POLICIES {} FAILED".format(policies))
@@ -1832,10 +1832,11 @@ def push_to_dcnm(dcnm: DcnmInterfaces, interfaces_to_change: dict, verbose: bool
     return success
 
 
-def deploy_to_fabric_using_interface_deploy(dcnm: DcnmInterfaces, deploy, verbose: bool = True):
+def deploy_to_fabric_using_interface_deploy(dcnm: DcnmInterfaces, deploy, policies: Optional[Union[list, tuple, str]]=None,
+                                            verbose: bool = True):
     deploy_list: list = DcnmInterfaces.create_deploy_list(deploy)
     if verbose:
-        _dbg('Deploying changes to switches')
+        _dbg('Deploying changes to switches', ' ')
     if dcnm.deploy_interfaces(deploy_list):
         logger.debug('successfully deployed to {}'.format(deploy))
         if verbose:
@@ -1852,7 +1853,51 @@ def deploy_to_fabric_using_interface_deploy(dcnm: DcnmInterfaces, deploy, verbos
         print()
     print()
     print('=' * 40)
-    print("FINISHED. GO GET A BEER!")
+    print('=' * 40)
+    if policies:
+        if isinstance(policies, str):
+            policies = [policies]
+        if dcnm.deploy_policies(policies):
+            logger.debug('successfully deployed policies {}'.format(policies))
+            if verbose:
+                _dbg('!!Successfully Deployed Config Changes to Switches!!', policies)
+        else:
+            logger.critical("Failed deploying policies {}".format(policies))
+            print()
+            print()
+            print('*' * 60)
+            print('Failed deploying th following policies:')
+            print(policies)
+            print('*' * 60)
+            print()
+            print()
+        print()
+        print('=' * 40)
+    print("FINISHED DEPLOYING. GO GET A BEER!")
+    print('=' * 40)
+
+
+def deploy_to_fabric_using_switch_deploy(dcnm: DcnmInterfaces, serial_number: str, verbose: bool = True):
+    if verbose:
+        _dbg('Deploying changes to switches')
+    if dcnm.deploy_switch_config(serial_number):
+        logger.debug('successfully deployed config to switch {}'.format(serial_number))
+        if verbose:
+            _dbg('!!Successfully Deployed Config Changes to Switches!!', serial_number)
+    else:
+        logger.critical("Failed deploying to config to switch {}".format(serial_number))
+        print()
+        print()
+        print('*' * 60)
+        print('Failed deploying configs to the following switches:')
+        print(serial_number)
+        print('*' * 60)
+        print()
+        print()
+    print()
+    print('=' * 40)
+    print('=' * 40)
+    print("FINISHED DEPLOYING. GO GET A BEER!")
     print('=' * 40)
 
 
@@ -1929,7 +1974,7 @@ if __name__ == '__main__':
     pprint(interfaces_will_change)
 
     success = push_to_dcnm(dcnm, interfaces_will_change)
-    deploy_to_fabric_using_interface_deploy(dcnm, success)
+    deploy_to_fabric_using_interface_deploy(dcnm, success, policies=list(policy_ids))
 
     # Verify
     verify_interface_change(dcnm, interfaces_will_change, serial_numbers=['FDO24261WAT', 'FDO242702QK'])
@@ -1942,13 +1987,15 @@ if __name__ == '__main__':
         interfaces_existing_conf = load(f)
     pprint(interfaces_existing_conf)
     success = push_to_dcnm(dcnm, interfaces_existing_conf)
-    deploy_to_fabric_using_interface_deploy(dcnm, success)
     with open('switches_configuration_policies.pickle', 'rb') as f:
         interface_desc_policies: dict[str, list] = load(f)
     pprint(interface_desc_policies)
+    policies_ids: list = []
     for serial_number in interface_desc_policies:
         for policy in interface_desc_policies[serial_number]:
             dcnm.post_new_policy(policy)
+            policies_ids.append([policy["policyId"]])
+    deploy_to_fabric_using_interface_deploy(dcnm, success, policies=policies_ids)
     print('=' * 40)
     print("FINISHED. GO GET PLASTERED!")
     print('=' * 40)
