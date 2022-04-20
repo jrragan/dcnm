@@ -1,3 +1,4 @@
+import functools
 import json
 import logging
 import re
@@ -22,6 +23,23 @@ def _dbg(header: str, data):
     print(header)
     print("=" * 40)
     pprint(data)
+
+
+def error_handler(msg):
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper_decorator(*args, **kwargs):
+            try:
+                value = func(*args, **kwargs)
+            except DCNMServerResponseError as e:
+                #print(e.args)
+                e = eval(e.args[0])
+                logger.critical("{} - {}".format(msg, e['DATA'][0]['message']))
+                logger.debug("{}".format(e))
+                raise
+            return value
+        return wrapper_decorator
+    return decorator
 
 
 class DCNMInterfacesParameterError(Exception):
@@ -68,6 +86,7 @@ class DcnmInterfaces(HttpApi):
         self.all_switches_policies_prev: dict = {}
         self.fabrics: dict[str, dict] = {}
 
+    @error_handler("ERROR getting switch serial numbers")
     def get_all_switches(self):
         """
         Pulls all switch serial numbers from DCNM inventory
@@ -85,21 +104,15 @@ class DcnmInterfaces(HttpApi):
 
         path = '/inventory/switches'
 
-        response = self.get(path)
-        try:
-            self._check_response(response)
-        except DCNMServerResponseError as e:
-            logger.critical("ERROR getting switch serial numbers")
-            logger.debug("{}".format(e))
-            raise
+        response = self._check_response(self.get(path))
         for switch in json.loads(response['MESSAGE']):
             if switch['switchRole'] == 'leaf':
                 self.all_leaf_switches[switch['serialNumber']] = switch['fabricName']
             else:
                 self.all_notleaf_switches[switch['serialNumber']] = switch['fabricName']
 
+    @error_handler("ERROR:  get_switches_by_serial_number: getting switch roles for serial number")
     def get_switches_by_serial_number(self, serial_numbers: Optional[list] = None):
-
         if serial_numbers and not isinstance(serial_numbers, (list, tuple)):
             raise DCNMInterfacesParameterError('serial_numbers must be a list or a tuple')
         elif serial_numbers and isinstance(serial_numbers, (list, tuple)):
@@ -110,14 +123,9 @@ class DcnmInterfaces(HttpApi):
 
             path = '/control/switches/roles'
             params = {'serialNumber': ','.join(serial_numbers)}
-            response = self.get(path, params=params)
-            try:
-                self._check_response(response)
-            except DCNMServerResponseError as e:
-                logger.critical(
-                    "ERROR getting switch roles for serial number: {}".format(serial_number))
-                logger.debug("{}".format(e))
-                raise
+            logger.info("get_switches_by_serial_number: for serial numbers: {}".format(serial_numbers))
+            response = self._check_response(self.get(path, params=params))
+
             for switch in json.loads(response['MESSAGE']):
                 fabricName = self.get_switch_fabric(switch['serialNumber'])
                 if switch['role'] == 'leaf':
@@ -127,6 +135,7 @@ class DcnmInterfaces(HttpApi):
         else:
             self.get_all_switches()
 
+    @error_handler("ERROR: get_switches_policies: getting switch policies for serial number")
     def get_switches_policies(self, serial_numbers: Optional[Union[str, list]] = None, fabric: Optional[str] = None,
                               description: Optional[Union[str, list]] = None,
                               entityName: Optional[str] = None,
@@ -278,13 +287,9 @@ class DcnmInterfaces(HttpApi):
             params = {
                 'serialNumber': ','.join(list(self.all_leaf_switches.keys()) + list(self.all_notleaf_switches.keys()))}
 
-        response = self.get(path, params=params)
-        try:
-            self._check_response(response)
-        except DCNMServerResponseError as e:
-            logger.critical("ERROR getting switch policies for serial number: {}".format(serial_number))
-            logger.debug("{}".format(e))
-            raise
+        logger.info("get_switches_policies: getting switch policies for serial number: {}".format(serial_numbers))
+        response = self._check_response(self.get(path, params=params))
+
         for policy in json.loads(response['MESSAGE']):
             self.all_switches_policies[policy['serialNumber']].append(policy)
 
@@ -363,6 +368,7 @@ class DcnmInterfaces(HttpApi):
             logger.info("delete_switch_policies:  {} successfully changed. Yay.".format(policyId))
         return True
 
+    @error_handler("ERROR: get_all_interfaces_detail: getting interface details for serial number")
     def get_all_interfaces_detail(self, serial_number: Optional[str] = None, interface: Optional[str] = None):
         """
 
@@ -508,13 +514,9 @@ class DcnmInterfaces(HttpApi):
 
         params = {'serialNumber': serial_number, 'ifName': interface}
 
-        response = self.get(path, params=params)
-        try:
-            self._check_response(response)
-        except DCNMServerResponseError as e:
-            logger.critical("ERROR getting interface details for serial number: {}".format(serial_number))
-            logger.debug("{}".format(e))
-            raise
+        logger.info("get_all_interfaces_detail: getting interface details for serial number: {}".format(serial_number))
+        response = self._check_response(self.get(path, params=params))
+
         for interface in json.loads(response['MESSAGE']):
             # print(interface)
             self.all_interfaces[(interface['ifName'], interface['serialNo'],)] = {
@@ -526,6 +528,7 @@ class DcnmInterfaces(HttpApi):
                 'isPhysical': interface['isPhysical'],
                 'interface_desc': interface['description']}
 
+    @error_handler("ERROR: get_all_interfaces_nvpairs: getting interface details and nvpairs for serial number")
     def get_all_interfaces_nvpairs(self, serial_number: Optional[str] = None,
                                    interface: Optional[str] = None) -> dict[tuple, dict]:
         """
@@ -589,14 +592,9 @@ class DcnmInterfaces(HttpApi):
         path = '/interface'
 
         params = {'serialNumber': serial_number, 'ifName': interface}
-
-        response = self.get(path, params=params)
-        try:
-            self._check_response(response)
-        except DCNMServerResponseError as e:
-            logger.critical("ERROR getting interface details and nvpairs for serial number: {}".format(serial_number))
-            logger.debug("{}".format(e))
-            raise
+        logger.info("get_all_interfaces_nvpairs: serial_number: {}".format(serial_number))
+        response = self._check_response(self.get(path, params=params))
+        logger.debug("get_all_interfaces_nvpairs: response: {}".format(response))
         for policy in json.loads(response['MESSAGE']):
             for interface in policy['interfaces']:
                 # print(interface)
@@ -907,6 +905,7 @@ class DcnmInterfaces(HttpApi):
         self.timeout = temp_timers
         return True
 
+    @error_handler("ERROR: get_switch_fabric: failed getting switch fabric for serial number")
     def get_switch_fabric(self, serial_number: str) -> str:
         """
 
@@ -918,10 +917,11 @@ class DcnmInterfaces(HttpApi):
         provide serial number of switch, returns name of fabric to which switch belongs
         """
         path = f'/control/switches/{serial_number}/fabric-name'
-
-        response = self.get(path, errors=[(500, "Invalid switch or Other exception")])
+        logger.debug("get_switch_fabric: getting fabric for switch {}".format(serial_number))
+        response = self._check_response(self.get(path, errors=[(500, "Invalid switch or Other exception")]))
         return json.loads(response['MESSAGE'])['fabricName']
 
+    @error_handler("ERROR: get_fabric_details: failed getting fabric details")
     def get_fabric_details(self, fabric: str):
         """
         Provide the name of a fabric, details are stored in object variable fabrics. API call returns
@@ -1168,13 +1168,9 @@ class DcnmInterfaces(HttpApi):
 
         path = f'/control/fabrics/{fabric}'
 
-        response = self.get(path)
-        try:
-            self._check_response(response)
-        except DCNMServerResponseError as e:
-            logger.critical("ERROR getting fabric details for: {}".format(fabric))
-            logger.debug("{}".format(e))
-            raise
+        logger.info("get_fabric_details: getting fabric details for: {}".format(fabric))
+        response = self._check_response(self.get(path))
+
         self.fabrics[fabric] = json.loads(response['MESSAGE'])
 
     def post_new_policy(self, details: str) -> bool:
@@ -1296,12 +1292,7 @@ class DcnmInterfaces(HttpApi):
         """
         start = time()
         while (time() - start) <= timeout:
-            try:
-                response: dict = self.get_switches_status(serial_numbers=serial_numbers)
-                logger.debug("wait_for_switches_status: response: {}".format(response))
-            except:
-                logger.critical("ERROR: wait_for_switches_status: Unable to retrieve switch statuses!")
-                raise
+            response: dict = self.get_switches_status(serial_numbers=serial_numbers)
             logger.debug("wait_for_switches_status: response: {}".format(response))
             statuses: list = sum(response.values(), [])
             if statuses:
@@ -1549,7 +1540,7 @@ class DcnmInterfaces(HttpApi):
     def _check_response(self, response: dict):
         if response['RETURN_CODE'] > 299:
             logger.error("ERROR IN RESPONSE FROM DCNM: {}".format(response))
-            raise DCNMServerResponseError("ERROR IN RESPONSE FROM DCNM: {}".format(response))
+            raise DCNMServerResponseError("{}".format(response))
         else:
             return response
 
