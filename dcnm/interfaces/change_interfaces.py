@@ -7,7 +7,7 @@ from pprint import pprint
 from time import strftime, gmtime
 
 from dcnm.interfaces.dcnm_interfaces import DcnmInterfaces, read_existing_descriptions, get_desc_change, get_cdp_change, \
-    get_orphanport_change, get_interfaces_to_change, push_to_dcnm, deploy_to_fabric, verify_interface_change, _dbg
+    get_orphanport_change, get_interfaces_to_change, push_to_dcnm, deploy_to_fabric_using_interface_deploy, verify_interface_change, _dbg
 
 
 def command_args() -> argparse.Namespace:
@@ -162,7 +162,7 @@ def _normal_deploy(args, dcnm):
     if args.verbose:
         _dbg("interfaces to change", interfaces_will_change)
     success: tuple = push_to_dcnm(dcnm, interfaces_will_change, args.verbose)
-    deploy_to_fabric(dcnm, success, args.verbose)
+    deploy_to_fabric_using_interface_deploy(dcnm, success, args.verbose)
     # Verify
     success, failure = verify_interface_change(dcnm, interfaces_will_change, serial_numbers=serials)
     if args.verbose:
@@ -183,7 +183,7 @@ def _fallback(args, dcnm):
         raise DCNMFileError("Error: input file not found")
     if args.verbose: _dbg("these interface configs will be restored", interfaces_existing_conf)
     success = push_to_dcnm(dcnm, interfaces_existing_conf)
-    deploy_to_fabric(dcnm, success)
+    deploy_to_fabric_using_interface_deploy(dcnm, success)
     if args.description:
         file_path = pathlib.Path(args.pickle)
         if file_path.is_file():

@@ -32,9 +32,12 @@ def error_handler(msg):
             try:
                 value = func(*args, **kwargs)
             except DCNMServerResponseError as e:
-                #print(e.args)
+                logger.debug(e.args)
                 e = eval(e.args[0])
-                logger.critical("{} - {}".format(msg, e['DATA'][0]['message']))
+                if isinstance(e['DATA'], (list, tuple)):
+                    logger.critical("{} - {}".format(msg, e['DATA'][0]['message']))
+                elif isinstance(e['DATA'], str):
+                    logger.critical("{} - {}".format(msg, e['DATA']))
                 logger.debug("{}".format(e))
                 raise
             return value
@@ -1213,9 +1216,9 @@ class DcnmInterfaces(HttpApi):
         "resourcesLinked": ""
         }
         """
-        path = 'control/policies'
-
-        info = self.put(path, data=details, errors=[
+        path = '/control/policies'
+        logger.debug("post_new_policy: details: {}".format(details))
+        info = self.post(path, data=details, errors=[
             (500, "Invalid payload or any other internal server error")])
         logger.debug("post_new_policy: info: {}".format(info))
         if info["RETURN_CODE"] != 200:
@@ -1250,7 +1253,7 @@ class DcnmInterfaces(HttpApi):
             if fabric not in self.fabrics:
                 self.get_fabric_details(fabric)
             fabric_id: str = self.fabrics[fabric]['id']
-            path = f'control/status?entityTypeFilter=SWITCH&fabricId={fabric_id}'
+            path = f'/control/status?entityTypeFilter=SWITCH&fabricId={fabric_id}'
             response = self.get(path)
             logger.debug("get_switches_status: response: {}".format(response))
             if response['RETURN_CODE'] > 299:
@@ -1291,12 +1294,13 @@ class DcnmInterfaces(HttpApi):
         that failed to attain status.
         """
         start = time()
+        logger.info("Checking for switch status")
         while (time() - start) <= timeout:
             response: dict = self.get_switches_status(serial_numbers=serial_numbers)
             logger.debug("wait_for_switches_status: response: {}".format(response))
-            statuses: list = sum(response.values(), [])
-            if statuses:
-                result: bool = all(stat == status for stat in statuses)
+
+            if response:
+                result: bool = all(stat == status for stat in response.values())
                 logger.debug("wait_for_switches_status: result: {}".format(result))
             else:
                 logger.critical("ERROR: wait_for_switches_status: Unable to retrieve switch statuses!")
@@ -1305,12 +1309,15 @@ class DcnmInterfaces(HttpApi):
                 logger.debug("Switch statuses successfully achieved: {}".format(status))
                 return result
             else:
+                logger.info("checking switch statuses: time elapsed: {}".format(time() - start))
                 sleep(sleep_time)
         logger.critical(
-            "ERROR: wait_for_switches_status: imed out waiting for switch statuses to become {}".format(status))
+            "ERROR: wait_for_switches_status: timed out waiting for switch statuses to become {}".format(status))
         if result:
             return True
-        return {key: value for key, value in response.items() if value != status}
+        bad_results: dict = {key: value for key, value in response.items() if value != status}
+        logger.critical("ERROR: These switches did not achieve the desired status: {}".format(bad_results))
+        return bad_results
 
     @staticmethod
     def _check_patterns(patterns: list[Union[str, tuple]], string_to_check: Union[str, dict]) -> bool:
@@ -1795,7 +1802,7 @@ def push_to_dcnm(dcnm: DcnmInterfaces, interfaces_to_change: dict, verbose: bool
     return success
 
 
-def deploy_to_fabric(dcnm: DcnmInterfaces, deploy, verbose: bool = True):
+def deploy_to_fabric_using_interface_deploy(dcnm: DcnmInterfaces, deploy, verbose: bool = True):
     deploy_list: list = DcnmInterfaces.create_deploy_list(deploy)
     if verbose:
         _dbg('Deploying changes to switches', " ")
@@ -1892,10 +1899,10 @@ if __name__ == '__main__':
     pprint(interfaces_will_change)
 
     success = push_to_dcnm(dcnm, interfaces_will_change)
-    deploy_to_fabric(dcnm, success)
+    deploy_to_fabric_using_interface_deploy(dcnm, success)
 
     # Verify
-    verify_interface_change(dcnm, interfaces_will_change, serial_numbers=['9Y04VBM75I8', '9A1R3QS819Z'])
+    verify_interface_change(dcnm, interfaces_will_change, serial_numbers=['FDO24261WAT', 'FDO242702QK'])
 
     # Fallback
     print()
@@ -1905,8 +1912,8 @@ if __name__ == '__main__':
         interfaces_existing_conf = load(f)
     pprint(interfaces_existing_conf)
     success = push_to_dcnm(dcnm, interfaces_existing_conf)
-    deploy_to_fabric(dcnm, success)
-    with open('interfaces_existing_conf.pickle', 'rb') as f:
+    deploy_to_fabric_using_interface_deploy(dcnm, success)
+    with open('switches_configuration_policies.pickle', 'rb') as f:
         interface_desc_policies: dict[str, list] = load(f)
     pprint(interface_desc_policies)
     for serial_number in interface_desc_policies:
@@ -1915,4 +1922,4 @@ if __name__ == '__main__':
     print('=' * 40)
     print("FINISHED. GO GET PLASTERED!")
     print('=' * 40)
-    dcnm.wait_for_switches_status(serial_numbers=['9Y04VBM75I8', '9A1R3QS819Z'])
+    dcnm.wait_for_switches_status(serial_numbers=['FDO24261WAT', 'FDO242702QK'])
