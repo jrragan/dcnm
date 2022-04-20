@@ -75,6 +75,10 @@ class DCNMServerResponseError(Exception):
     pass
 
 
+class DCNMPolicyDeployError(Exception):
+    pass
+
+
 class DcnmInterfaces(HttpApi):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -905,6 +909,32 @@ class DcnmInterfaces(HttpApi):
             self.timeout = temp_timers
             return False
         logger.debug("deploy_fabric_config: successfully deployed: {}".format(info))
+        self.timeout = temp_timers
+        return True
+
+    def deploy_policies(self, policies: list) -> Optional[bool]:
+        """
+
+        :param policies: list of policies to deploy, Eg :- ["POLICY-1200","POLICY-1220"]
+        :type fabric: list
+        :return: True if successful, False otherwise
+        :rtype: bool
+        """
+        path = '/control/policies/deploy'
+        temp_timers = self.timeout
+        self.timeout = 300
+        if isinstance(policies, tuple):
+            policies = list(policies)
+        elif not isinstance(policies, list):
+            raise DCNMPolicyDeployError("must provide a list of policy ids")
+        logger.debug("deploying policies {}".format(policies))
+        info = self.post(path, data=policies)
+        if info["RETURN_CODE"] != 200:
+            logger.critical("ERROR: deploy_policies: DEPLOY OF POLICIES {} FAILED".format(policies))
+            logger.critical("ERROR: deploy_policies: returned info {}".format(info))
+            self.timeout = temp_timers
+            return False
+        logger.debug("deploy_policies: successfully deployed: {}".format(info))
         self.timeout = temp_timers
         return True
 
@@ -1805,7 +1835,7 @@ def push_to_dcnm(dcnm: DcnmInterfaces, interfaces_to_change: dict, verbose: bool
 def deploy_to_fabric_using_interface_deploy(dcnm: DcnmInterfaces, deploy, verbose: bool = True):
     deploy_list: list = DcnmInterfaces.create_deploy_list(deploy)
     if verbose:
-        _dbg('Deploying changes to switches', " ")
+        _dbg('Deploying changes to switches')
     if dcnm.deploy_interfaces(deploy_list):
         logger.debug('successfully deployed to {}'.format(deploy))
         if verbose:
