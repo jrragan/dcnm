@@ -3,7 +3,7 @@ import logging
 import pathlib
 from pickle import dump, load
 from time import strftime, gmtime
-from typing import Union
+from typing import Union, TextIO
 
 from dcnm.interfaces.dcnm_interfaces import DcnmInterfaces, read_existing_descriptions, get_desc_change, get_cdp_change, \
     get_orphanport_change, get_interfaces_to_change, push_to_dcnm, deploy_to_fabric_using_interface_deploy, \
@@ -81,7 +81,7 @@ def command_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _get_sns(user_args):
+def _get_sns(user_args: argparse.Namespace) -> list:
     serials: list = user_args.serials
     if user_args.input_file:
         serials += _read_serials_from_file(user_args.input_file)
@@ -92,7 +92,7 @@ class DCNMFileError(Exception):
     pass
 
 
-def _read_serials_from_file(file):
+def _read_serials_from_file(file: TextIO):
     file_path = pathlib.Path(file)
     if file_path.is_file():
         with file_path.open() as serials_file:
@@ -111,7 +111,7 @@ class DCNMValueError(Exception):
     pass
 
 
-def _normal_deploy(args, dcnm):
+def _normal_deploy(args: argparse.Namespace, dcnm: DcnmInterfaces):
     logger.info("DEPLOYING")
     if args.verbose: _dbg("DEPLOYING", " ")
     serials = _get_serial_numbers(args)
@@ -169,7 +169,7 @@ def _normal_deploy(args, dcnm):
         _dbg("verify_interface_change: No Failures!")
 
 
-def _get_serial_numbers(args):
+def _get_serial_numbers(args: argparse.Namespace):
     # get serial numbers
     serials = None
     if not args.all:
@@ -181,7 +181,7 @@ def _get_serial_numbers(args):
     return serials
 
 
-def _fallback(args, dcnm):
+def _fallback(args: argparse.Namespace, dcnm: DcnmInterfaces):
     logger.info("FALLING BACK")
     if args.verbose: _dbg("FALLING BACK!", " ")
     serials = _get_serial_numbers(args)
