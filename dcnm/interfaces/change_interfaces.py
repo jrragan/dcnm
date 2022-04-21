@@ -92,7 +92,7 @@ class DCNMFileError(Exception):
     pass
 
 
-def _read_serials_from_file(file: TextIO):
+def _read_serials_from_file(file: str):
     file_path = pathlib.Path(file)
     if file_path.is_file():
         with file_path.open() as serials_file:
