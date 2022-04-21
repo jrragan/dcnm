@@ -1,13 +1,13 @@
 import argparse
 import logging
 import pathlib
-import sys
 from pickle import dump, load
-from pprint import pprint
 from time import strftime, gmtime
+from typing import Union
 
 from dcnm.interfaces.dcnm_interfaces import DcnmInterfaces, read_existing_descriptions, get_desc_change, get_cdp_change, \
-    get_orphanport_change, get_interfaces_to_change, push_to_dcnm, deploy_to_fabric_using_interface_deploy, verify_interface_change, _dbg
+    get_orphanport_change, get_interfaces_to_change, push_to_dcnm, deploy_to_fabric_using_interface_deploy, \
+    verify_interface_change, _dbg
 
 
 def command_args() -> argparse.Namespace:
@@ -52,7 +52,9 @@ def command_args() -> argparse.Namespace:
     parser.add_argument("-m", "--mgmt", action="store_true",
                         help="include mgmt interfaces in cdp action")
     parser.add_argument("-d", "--description", action="store_true",
-                        help="correct interfaces descriptions")
+                        help="correct interfaces descriptions\n"
+                             "if this was part of the original change, this parameter\n"
+                             "must be included with the fallback option")
     parser.add_argument("-o", "--orphan", action="store_true",
                         help="add vpc orphan port configuration to interfaces")
     parser.add_argument("-p", "--pickle", default="switches_configuration_policies.pickle",
@@ -110,14 +112,9 @@ class DCNMValueError(Exception):
 
 
 def _normal_deploy(args, dcnm):
-    # get serial numbers
-    serials = None
-    if not args.all:
-        serials: list = _get_sns(args)
-        if not serials:
-            logger.critical("No Serial Numbers Provided!")
-            raise DCNMValueError("No Serial Numbers Provided!")
-        if args.verbose: _dbg("switch serial numbers provided", serials)
+    logger.info("DEPLOYING")
+    if args.verbose: _dbg("DEPLOYING", " ")
+    serials = _get_serial_numbers(args)
     # get interface info for these serial numbers
     dcnm.get_interfaces_nvpairs(serial_numbers=serials)
     if args.verbose: _dbg("interfaces details and nvpairs", dcnm.all_interfaces_nvpairs)
@@ -129,6 +126,7 @@ def _normal_deploy(args, dcnm):
     if args.verbose:
         _dbg("number of leaf switches", len(dcnm.all_leaf_switches.keys()))
         _dbg("leaf switches", dcnm.all_leaf_switches.keys())
+    policy_ids: Union[set, list, None] = None
     if args.description:
         if not args.excel:
             dcnm.get_switches_policies(templateName='switch_freeform\Z',
@@ -161,18 +159,32 @@ def _normal_deploy(args, dcnm):
         dump(interfaces_existing_conf, f)
     if args.verbose:
         _dbg("interfaces to change", interfaces_will_change)
-    success: tuple = push_to_dcnm(dcnm, interfaces_will_change, args.verbose)
-    deploy_to_fabric_using_interface_deploy(dcnm, success, args.verbose)
+    success: set = push_to_dcnm(dcnm, interfaces_will_change, verbose=args.verbose)
+    deploy_to_fabric_using_interface_deploy(dcnm, success, policies=policy_ids, verbose=args.verbose)
     # Verify
-    success, failure = verify_interface_change(dcnm, interfaces_will_change, serial_numbers=serials)
-    if args.verbose:
-        if failure:
-            _dbg("failure verifying following interfaces", "verify_interface_change:  Failed configuring {}".format(failure))
-        else:
-            _dbg("verify_interface_change: No Failures!")
+    success, failure = verify_interface_change(dcnm, interfaces_will_change, serial_numbers=serials, verbose=args.verbose)
+    if failure:
+        _dbg("failure verifying following interfaces", "verify_interface_change:  Failed configuring {}".format(failure))
+    elif args.verbose:
+        _dbg("verify_interface_change: No Failures!")
+
+
+def _get_serial_numbers(args):
+    # get serial numbers
+    serials = None
+    if not args.all:
+        serials: list = _get_sns(args)
+        if not serials:
+            logger.critical("No Serial Numbers Provided!")
+            raise DCNMValueError("No Serial Numbers Provided!")
+        if args.verbose: _dbg("switch serial numbers provided", serials)
+    return serials
 
 
 def _fallback(args, dcnm):
+    logger.info("FALLING BACK")
+    if args.verbose: _dbg("FALLING BACK!", " ")
+    serials = _get_serial_numbers(args)
     file_path = pathlib.Path(args.icpickle)
     if file_path.is_file():
         with open(args.icpickle, 'rb') as f:
@@ -183,20 +195,25 @@ def _fallback(args, dcnm):
         raise DCNMFileError("Error: input file not found")
     if args.verbose: _dbg("these interface configs will be restored", interfaces_existing_conf)
     success = push_to_dcnm(dcnm, interfaces_existing_conf)
-    deploy_to_fabric_using_interface_deploy(dcnm, success)
-    if args.description:
+
+    policy_ids: Union[set, list, None] = None
+    if args.description and not args.excel:
         file_path = pathlib.Path(args.pickle)
         if file_path.is_file():
             with open(args.pickle, 'rb') as f:
                 interface_desc_policies: dict[str, list] = load(f)
                 if args.verbose: _dbg("these switch policies will be restored", interface_desc_policies)
+                policy_ids = []
                 for serial_number in interface_desc_policies:
                     for policy in interface_desc_policies[serial_number]:
                         dcnm.post_new_policy(policy)
+                        policy_ids.append([policy["policyId"]])
         else:
             logger.critical("Error: pickle file not found")
             if args.verbose: _dbg("Pickle file containing original interface configs not found", args.pickle)
             raise DCNMFileError("Error: pickle file not found")
+    deploy_to_fabric_using_interface_deploy(dcnm, success, policies=policy_ids, verbose=args.verbose)
+    verify_interface_change(dcnm, interfaces_existing_conf, serial_numbers=serials, verbose=args.verbose)
 
 
 if __name__ == '__main__':
