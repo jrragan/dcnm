@@ -1792,10 +1792,11 @@ def get_orphanport_change(interface: tuple, detail: dict) -> bool:
     return False
 
 
-def verify_interface_change(dcnm: DcnmInterfaces, interfaces_will_change: dict, **kwargs) -> tuple[set, set]:
+def verify_interface_change(dcnm: DcnmInterfaces, interfaces_will_change: dict, verbose: bool=True, **kwargs) -> tuple[set, set]:
     dcnm.get_interfaces_nvpairs(save_prev=True, **kwargs)
     failed: set = set()
     success: set = set()
+    if verbose: _dbg("Verifyting Interface Configurations", " ")
     for interface in interfaces_will_change:
         if interfaces_will_change[interface] == dcnm.all_interfaces_nvpairs[interface]:
             logger.debug("Verification confirmed for interface {}".format(interface))
@@ -1808,12 +1809,22 @@ def verify_interface_change(dcnm: DcnmInterfaces, interfaces_will_change: dict, 
             failed.add(interface)
     if failed:
         logger.critical("verify_interface_change:  Failed configuring {}".format(failed))
+        if failed:
+            print()
+            print()
+            print('*' * 60)
+            print('Failed pushing config changes to DCNM for the following switches:')
+            print(failed)
+            print('*' * 60)
+            print()
+            print()
     else:
         logger.debug("verify_interface_change: No Failures!")
+        if verbose: _dbg("Successfully Verified All Interface Changes! Yay!", " ")
     return success, failed
 
 
-def push_to_dcnm(dcnm: DcnmInterfaces, interfaces_to_change: dict, verbose: bool = True) -> tuple:
+def push_to_dcnm(dcnm: DcnmInterfaces, interfaces_to_change: dict, verbose: bool = True) -> set:
     # make changes
     success: set
     failure: set
@@ -1829,6 +1840,10 @@ def push_to_dcnm(dcnm: DcnmInterfaces, interfaces_to_change: dict, verbose: bool
         print('*' * 60)
         print()
         print()
+    else:
+        if verbose: _dbg("Successfully Pushed All Configurations!", " ")
+    logger.debug("push_to_dcnm: success: {}".format(success))
+    if verbose: _dbg("Successfully Pushed Following Configs", success)
     return success
 
 
@@ -1997,6 +2012,10 @@ if __name__ == '__main__':
             policies_ids.append([policy["policyId"]])
     deploy_to_fabric_using_interface_deploy(dcnm, success, policies=policies_ids)
     print('=' * 40)
-    print("FINISHED. GO GET PLASTERED!")
+    print("FALLBACK")
     print('=' * 40)
     dcnm.wait_for_switches_status(serial_numbers=['FDO24261WAT', 'FDO242702QK'])
+    verify_interface_change(dcnm, interfaces_existing_conf, serial_numbers=['FDO24261WAT', 'FDO242702QK'])
+    print('=' * 40)
+    print("FINISHED. GO GET PLASTERED!")
+    print('=' * 40)
