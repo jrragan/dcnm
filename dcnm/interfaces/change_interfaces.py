@@ -81,18 +81,18 @@ def command_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _get_sns(user_args: argparse.Namespace) -> list:
-    serials: list = user_args.serials
-    if user_args.input_file:
-        serials += _read_serials_from_file(user_args.input_file)
-    return serials
-
-
 class DCNMFileError(Exception):
     pass
 
 
 def _read_serials_from_file(file: str):
+    """
+
+    :param file: name of file of serial numbers
+    :type file: str
+    :return: list of serial numbers
+    :rtype: list
+    """
     file_path = pathlib.Path(file)
     if file_path.is_file():
         with file_path.open() as serials_file:
@@ -112,6 +112,17 @@ class DCNMValueError(Exception):
 
 
 def _normal_deploy(args: argparse.Namespace, dcnm: DcnmInterfaces):
+    """
+
+    :param args:
+    :type args:
+    :param dcnm:
+    :type dcnm:
+    :return:
+    :rtype:
+
+    push changes to dcnm, deploy changes to fabric and verify changes based on cli args
+    """
     logger.info("DEPLOYING")
     if args.verbose: _dbg("DEPLOYING", " ")
     serials = _get_serial_numbers(args)
@@ -170,18 +181,41 @@ def _normal_deploy(args: argparse.Namespace, dcnm: DcnmInterfaces):
 
 
 def _get_serial_numbers(args: argparse.Namespace):
+    """
+
+    :param args:
+    :type args:
+    :return:
+    :rtype:
+
+    get serial numbers from cli or from filename provided by cli
+    """
     # get serial numbers
     serials = None
     if not args.all:
-        serials: list = _get_sns(args)
+        serials: list = args.serials
+        if args.input_file:
+            serials += _read_serials_from_file(args.input_file)
         if not serials:
             logger.critical("No Serial Numbers Provided!")
+            if args.verbose: _dbg("No Serial Numbers Provided!", " ")
             raise DCNMValueError("No Serial Numbers Provided!")
         if args.verbose: _dbg("switch serial numbers provided", serials)
     return serials
 
 
 def _fallback(args: argparse.Namespace, dcnm: DcnmInterfaces):
+    """
+
+    :param args:
+    :type args:
+    :param dcnm:
+    :type dcnm:
+    :return:
+    :rtype:
+
+    fallback to original config: push changes to dcnm, deploy changes to fabric and verify changes based on cli args
+    """
     logger.info("FALLING BACK")
     if args.verbose: _dbg("FALLING BACK!", " ")
     serials = _get_serial_numbers(args)
