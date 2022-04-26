@@ -1792,11 +1792,11 @@ def get_orphanport_change(interface: tuple, detail: dict) -> bool:
     return False
 
 
-def verify_interface_change(dcnm: DcnmInterfaces, interfaces_will_change: dict, verbose: bool=True, **kwargs) -> tuple[set, set]:
+def verify_interface_change(dcnm: DcnmInterfaces, interfaces_will_change: dict, verbose: bool=True, **kwargs):
     dcnm.get_interfaces_nvpairs(save_prev=True, **kwargs)
     failed: set = set()
     success: set = set()
-    if verbose: _dbg("Verifyting Interface Configurations", " ")
+    if verbose: _dbg("Verifying Interface Configurations", " ")
     for interface in interfaces_will_change:
         if interfaces_will_change[interface] == dcnm.all_interfaces_nvpairs[interface]:
             logger.debug("Verification confirmed for interface {}".format(interface))
@@ -1808,20 +1808,13 @@ def verify_interface_change(dcnm: DcnmInterfaces, interfaces_will_change: dict, 
             logger.critical("Configuration pulled from DCNM: {}".format(dcnm.all_interfaces_nvpairs[interface]))
             failed.add(interface)
     if failed:
-        logger.critical("verify_interface_change:  Failed configuring {}".format(failed))
         if failed:
-            print()
-            print()
-            print('*' * 60)
-            print('Failed pushing config changes to DCNM for the following switches:')
-            print(failed)
-            print('*' * 60)
-            print()
-            print()
+            _failed_dbg("verify_interface_change:  Failed configuring {}".format(failed),
+                        ("Failed verification config changes to for the following switches:", failed))
     else:
         logger.debug("verify_interface_change: No Failures!")
         if verbose: _dbg("Successfully Verified All Interface Changes! Yay!", " ")
-    return success, failed
+    #return success, failed
 
 
 def push_to_dcnm(dcnm: DcnmInterfaces, interfaces_to_change: dict, verbose: bool = True) -> set:
@@ -1832,14 +1825,8 @@ def push_to_dcnm(dcnm: DcnmInterfaces, interfaces_to_change: dict, verbose: bool
         _dbg("Putting changes to dcnm", " ")
     success, failure = dcnm.put_interface_changes(interfaces_to_change)
     if failure:
-        print()
-        print()
-        print('*' * 60)
-        print('Failed pushing config changes to DCNM for the following switches:')
-        print(failure)
-        print('*' * 60)
-        print()
-        print()
+        _failed_dbg("Failed putting to DCNM for the following: {}".format(failure),
+                    ("Failed pushing config changes to DCNM for the following switches:", failure))
     else:
         if verbose: _dbg("Successfully Pushed All Configurations!", " ")
     logger.debug("push_to_dcnm: success: {}".format(success))
@@ -1857,15 +1844,8 @@ def deploy_to_fabric_using_interface_deploy(dcnm: DcnmInterfaces, deploy, polici
         if verbose:
             _dbg('!!Successfully Deployed Config Changes to Switches!!', deploy)
     else:
-        logger.critical("Failed deploying to {}".format(deploy))
-        print()
-        print()
-        print('*' * 60)
-        print('Failed deploying configs to the following switches:')
-        print(deploy)
-        print('*' * 60)
-        print()
-        print()
+        _failed_dbg("Failed deploying to {}".format(deploy),
+                    ("Failed deploying configs to the following switches:", deploy))
     print()
     print('=' * 40)
     print('=' * 40)
@@ -1877,17 +1857,11 @@ def deploy_to_fabric_using_interface_deploy(dcnm: DcnmInterfaces, deploy, polici
             if verbose:
                 _dbg('!!Successfully Deployed Config Changes to Switches!!', policies)
         else:
-            logger.critical("Failed deploying policies {}".format(policies))
-            print()
-            print()
-            print('*' * 60)
-            print('Failed deploying th following policies:')
-            print(policies)
-            print('*' * 60)
-            print()
-            print()
-        print()
-        print('=' * 40)
+            _failed_dbg("Failed deploying policies {}".format(policies),
+                        ('Failed deploying th following policies:', policies))
+    print()
+    print('=' * 40)
+    print('=' * 40)
     print("FINISHED DEPLOYING. GO GET A BEER!")
     print('=' * 40)
 
@@ -1900,20 +1874,25 @@ def deploy_to_fabric_using_switch_deploy(dcnm: DcnmInterfaces, serial_number: st
         if verbose:
             _dbg('!!Successfully Deployed Config Changes to Switches!!', serial_number)
     else:
-        logger.critical("Failed deploying to config to switch {}".format(serial_number))
-        print()
-        print()
-        print('*' * 60)
-        print('Failed deploying configs to the following switches:')
-        print(serial_number)
-        print('*' * 60)
-        print()
-        print()
+        _failed_dbg("Failed deploying to config to switch {}".format(serial_number),
+                   ("Failed deploying configs to the following switches:", serial_number))
     print()
     print('=' * 40)
     print('=' * 40)
     print("FINISHED DEPLOYING. GO GET A BEER!")
     print('=' * 40)
+
+
+def _failed_dbg(log_msg: str, messages: tuple):
+    logger.critical(log_msg)
+    print()
+    print()
+    print('*' * 60)
+    for i in messages:
+        pprint(i)
+    print('*' * 60)
+    print()
+    print()
 
 
 if __name__ == '__main__':
