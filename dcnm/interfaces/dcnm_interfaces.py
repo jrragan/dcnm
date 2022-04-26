@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pickle import dump, load
 from pprint import pprint
 from time import sleep, time
-from typing import Union, Optional, Callable
+from typing import Union, Optional, Callable, Any
 
 import pandas
 from pandas import read_excel
@@ -40,6 +40,26 @@ def error_handler(msg):
                     logger.critical("{} - {}".format(msg, e['DATA']))
                 logger.debug("{}".format(e))
                 raise
+            return value
+        return wrapper_decorator
+    return decorator
+
+
+def action_error_handler(msg):
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper_decorator(*args, **kwargs):
+            try:
+                value = func(*args, **kwargs)
+            except DCNMServerResponseError as e:
+                logger.debug(e.args)
+                e = eval(e.args[0])
+                if isinstance(e['DATA'], (list, tuple)):
+                    logger.critical("{} - {}".format(msg, e['DATA'][0]['message']))
+                elif isinstance(e['DATA'], str):
+                    logger.critical("{} - {}".format(msg, e['DATA']))
+                logger.debug("{}".format(e))
+                value = False
             return value
         return wrapper_decorator
     return decorator
@@ -363,17 +383,10 @@ class DcnmInterfaces(HttpApi):
             path: str = f'/control/policies/{policyId}'
         elif isinstance(policyId, (list, tuple)):
             path: str = f'/control/policies/policyIds?policyIds={",".join(policyId)}'
-        info = self.delete(path, errors=[
-            (500, "Invalid payload or any other internal server error (e.g. policy does not exist)")])
-        logger.debug("delete_switch_policies: info: {}".format(policyId))
-        if info["RETURN_CODE"] != 200:
-            logger.critical("delete_switch_policies: DELETE OF {} FAILED".format(policyId))
-            logger.critical("delete_switch_policies: info returned from put: {}".format(info))
-            logger.debug(policyId)
-            return False
-        else:
-            logger.info("delete_switch_policies:  {} successfully changed. Yay.".format(policyId))
-        return True
+        info = self._check_action_response(self.delete(path, errors=[
+            (500, "Invalid payload or any other internal server error (e.g. policy does not exist)")]),
+                                           "delete_switch_policies", "DELETE OF", policyId)
+        return info
 
     @error_handler("ERROR: get_all_interfaces_detail: getting interface details for serial number")
     def get_all_interfaces_detail(self, serial_number: Optional[str] = None, interface: Optional[str] = None):
@@ -698,15 +711,11 @@ class DcnmInterfaces(HttpApi):
             if not fabric:
                 fabric = self.get_switch_fabric(serial_number)
         path: str = f'/control/fabrics/{fabric}/config-deploy/{serial_number}'
-        info = self.post(path, errors=[(400, "Invalid value supplied"),
-                                       (500, "Invalid payload or any other internal server error")])
-        logger.debug("put_interface: info: {}".format(info))
-        if info["RETURN_CODE"] != 200:
-            logger.critical(
-                "ERROR: deploy_switch_config: CONFIG SAVE OF {} switch {} FAILED".format(fabric, serial_number))
-            logger.critical("ERROR: deploy_switch_config: info returned from put: {}".format(info))
-            return False
-        return True
+        info = self._check_action_response(self.post(path, errors=[(400, "Invalid value supplied"),
+                                       (500, "Invalid payload or any other internal server error")]),
+                                           "desploy_switch_config", "CONFIG SAVE OF {} switch".format(fabric),
+                                           serial_number)
+        return info
 
     def put_interface(self, interface: tuple, details: dict) -> bool:
         """
@@ -756,15 +765,10 @@ class DcnmInterfaces(HttpApi):
         Changes interface configuration on DCNM. This does not create a new interface.
         """
         path: str = '/interface'
-        info = self.put(path, data=details, errors=[
-            (500, "Invalid payload or any other internal server error")])
-        logger.debug("interface_put: info: {}".format(info))
-        if info["RETURN_CODE"] != 200:
-            logger.critical("ERROR: put_interface: CREATION OF {} FAILED".format(interface))
-            logger.critical("ERROR: put_interface: info returned from put: {}".format(info))
-            logger.debug(details)
-            return False
-        return True
+        info = self._check_action_response(self.put(path, data=details, errors=[
+            (500, "Invalid payload or any other internal server error")]), "put_interface",
+                                           "CREATION OF", interface)
+        return info
 
     def put_interface_changes(self, interfaces_will_change: dict[tuple, dict]) -> tuple[set, set]:
         """
@@ -878,15 +882,10 @@ class DcnmInterfaces(HttpApi):
         temp_timers = self.timeout
         self.timeout = 300
         logger.debug("deploy_interfaces: deploying interfaces {}".format(payload))
-        info = self.post(path, data=payload)
-        if info["RETURN_CODE"] != 200:
-            logger.critical("ERROR: deploy_interfaces: DEPLOY OF {} FAILED".format(payload))
-            logger.critical("ERROR: deploy_interfaces: returned info {}".format(info))
-            self.timeout = temp_timers
-            return False
-        logger.debug("deploy_interfaces: successfully deployed: {}".format(info))
+        info = self._check_action_response(self.post(path, data=payload), "deploy_interfaces",
+                                           "DEPLOY OF", payload)
         self.timeout = temp_timers
-        return True
+        return info
 
     def deploy_fabric_config(self, fabric: str) -> Optional[bool]:
         """
@@ -900,17 +899,12 @@ class DcnmInterfaces(HttpApi):
         temp_timers = self.timeout
         self.timeout = 300
         logger.debug("deploying config fabric {}".format(fabric))
-        info = self.post(path,
+        info = self._check_action_response(self.post(path,
                          errors=[
-                             (500, "Fabric name is invalid or config deployment failed due to internal server error")])
-        if info["RETURN_CODE"] != 200:
-            logger.critical("ERROR: deploy_fabric_config: DEPLOY OF FABRIC {} FAILED".format(fabric))
-            logger.critical("ERROR: deploy_fabric_config: returned info {}".format(info))
-            self.timeout = temp_timers
-            return False
-        logger.debug("deploy_fabric_config: successfully deployed: {}".format(info))
+                             (500, "Fabric name is invalid or config deployment failed due to internal server error")]),
+                                           "deploy_fabric_config", "DEPLOY OF FABRIC", fabric)
         self.timeout = temp_timers
-        return True
+        return info
 
     def deploy_policies(self, policies: list) -> Optional[bool]:
         """
@@ -928,15 +922,10 @@ class DcnmInterfaces(HttpApi):
         elif not isinstance(policies, list):
             raise DCNMPolicyDeployError("must provide a list of policy ids")
         logger.info("deploying policies {}".format(policies))
-        info = self.post(path, data=policies)
-        if info["RETURN_CODE"] != 200:
-            logger.critical("ERROR: deploy_policies: DEPLOY OF POLICIES {} FAILED".format(policies))
-            logger.critical("ERROR: deploy_policies: returned info {}".format(info))
-            self.timeout = temp_timers
-            return False
-        logger.debug("deploy_policies: successfully deployed: {}".format(info))
+        info = self._check_action_response(self.post(path, data=policies), "deploy_policies", "DEPLOY OF POLICIES",
+                                           policies)
         self.timeout = temp_timers
-        return True
+        return info
 
     @error_handler("ERROR: get_switch_fabric: failed getting switch fabric for serial number")
     def get_switch_fabric(self, serial_number: str) -> str:
@@ -1248,15 +1237,10 @@ class DcnmInterfaces(HttpApi):
         """
         path = '/control/policies'
         logger.debug("post_new_policy: details: {}".format(details))
-        info = self.post(path, data=details, errors=[
-            (500, "Invalid payload or any other internal server error")])
-        logger.debug("post_new_policy: info: {}".format(info))
-        if info["RETURN_CODE"] != 200:
-            logger.critical("ERROR: post_new_policy: CREATION OF POLICY {} FAILED".format(details))
-            logger.critical("ERROR: post_new_policy: info returned from post: {}".format(info))
-            logger.debug(details)
-            return False
-        return True
+        info = self._check_action_response(self.post(path, data=details, errors=[
+            (500, "Invalid payload or any other internal server error")]), "post_new_policy",
+                                           "CREATION OF POLICY", details)
+        return info
 
     def get_switches_status(self, serial_numbers: Optional[Union[str, list[str]]]) -> dict[str, str]:
         local_status: dict[str, list] = {}
@@ -1580,6 +1564,14 @@ class DcnmInterfaces(HttpApi):
             raise DCNMServerResponseError("{}".format(response))
         else:
             return response
+
+    def _check_action_response(self, response: dict, method: str, message: str, data: Any) -> bool:
+        if response["RETURN_CODE"] != 200:
+            logger.critical("ERROR: {}: {} {} FAILED".format(method, message, data))
+            logger.critical("ERROR: {}: returned info {}".format(method, response))
+            return False
+        logger.debug("{} successful: {}".format(method, response))
+        return True
 
 
 class ExcelFileError(Exception):
