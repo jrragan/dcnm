@@ -1,11 +1,13 @@
 import argparse
 import logging
 import pathlib
+import sys
 from pickle import dump, load
 from time import strftime, gmtime
 from typing import Union
 
-from dcnm.interfaces.dcnm_interfaces import DcnmInterfaces, read_existing_descriptions, get_desc_change, get_cdp_change, \
+
+from dcnm_interfaces import DcnmInterfaces, read_existing_descriptions, get_desc_change, get_cdp_change, \
     get_orphanport_change, get_interfaces_to_change, push_to_dcnm, deploy_to_fabric_using_interface_deploy, \
     verify_interface_change, _dbg
 
@@ -13,8 +15,10 @@ from dcnm.interfaces.dcnm_interfaces import DcnmInterfaces, read_existing_descri
 def command_args() -> argparse.Namespace:
     """ define and parse command line arguments """
 
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('-a', "--dcnm",
+    parser = argparse.ArgumentParser(description="automation of interface configuration changes via dcnm\n"
+                                                 "at least one of -c -d or -o must be included or the \n"
+                                                 "program won't do anything")
+    parser.add_argument('-a', "--dcnm", metavar="IP_or_DNS_NAME",
                         required=True,
                         help="dcnm hostname or ip address")
     parser.add_argument("-u", "--username",
@@ -38,13 +42,13 @@ def command_args() -> argparse.Namespace:
     )
     parser.add_argument("-e", "--all", action="store_true",
                         help="perform actions for all switches")
-    parser.add_argument("-x", "--excel",
+    parser.add_argument("-x", "--excel", metavar="EXCEL_FILE",
                         help="descriptions xlsx file")
     parser.add_argument("-g", "--debug", action="store_true",
                         help="Shortcut for setting screen and logfile levels to DEBUG")
-    parser.add_argument("-s", "--screenloglevel", default="INFO",
+    parser.add_argument("-s", "--screenloglevel", metavar="LOGLEVE", default="INFO",
                         choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], help="Default is INFO.")
-    parser.add_argument("-l", "--loglevel", default="NONE",
+    parser.add_argument("-l", "--loglevel", metavar="LOGLEVEL", default="NONE",
                         choices=['NONE', 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
                         help="Default is NONE.")
     parser.add_argument("-c", "--cdp", action="store_true",
@@ -58,11 +62,17 @@ def command_args() -> argparse.Namespace:
     parser.add_argument("-o", "--orphan", action="store_true",
                         help="add vpc orphan port configuration to interfaces")
     parser.add_argument("-p", "--pickle", default="switches_configuration_policies.pickle",
-                        help="filename for pickle file used to save original switch configuration policies")
+                        metavar="FILE",
+                        help="filename for pickle file used to save original switch configuration policies\n"
+                             "if included for deploy, it must also be included for backout")
     parser.add_argument("-i", "--icpickle", default="interfaces_existing_conf.pickle",
-                        help="filename for pickle file used to save original interface configuration policies")
+                        metavar="FILE",
+                        help="filename for pickle file used to save original interface configuration policies\n"
+                             "if included for deploy, it must also be included for backout")
     parser.add_argument("-b", "--backout", action="store_true",
-                        help="rerun app with this option to fall back to original configuration")
+                        help="rerun app with this option to fall back to original configuration\n"
+                             "if running backout, you should run program with all options included\n"
+                             "in the original deploy")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="verbose mode")
 
@@ -77,7 +87,6 @@ def command_args() -> argparse.Namespace:
                         const=False)
     dryrun.set_defaults(dryrun=True)
 
-    logger.debug(parser.parser_args())
     return parser.parse_args()
 
 
@@ -286,12 +295,14 @@ if __name__ == '__main__':
     logger = logging.getLogger('change_interfaces')
     logger.critical("Started")
 
+    logger.debug(args)
+    if args.verbose: _dbg("args:", args)
     # prompt stdin for username and password
     print("args parsed -- Running in %s mode" % mode)
     dcnm = DcnmInterfaces(args.dcnm, dryrun=args.dryrun)
     dcnm.login(username=args.username)
 
-    if not args.fallback:
+    if not args.backout:
         _normal_deploy(args, dcnm)
 
     # Fallback

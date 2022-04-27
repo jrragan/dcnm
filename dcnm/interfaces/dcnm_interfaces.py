@@ -13,8 +13,9 @@ from typing import Union, Optional, Callable, Any
 import pandas
 from pandas import read_excel
 
-from dcnm.interfaces.dcnm_connect import HttpApi
+from dcnm_connect import HttpApi
 
+logger = logging.getLogger('dcnm_interfaces')
 
 def _dbg(header: str, data):
     """ Output verbose data """
@@ -40,28 +41,6 @@ def error_handler(msg):
                     logger.critical("{} - {}".format(msg, e['DATA']))
                 logger.debug("{}".format(e))
                 raise
-            return value
-
-        return wrapper_decorator
-
-    return decorator
-
-
-def action_error_handler(msg):
-    def decorator(func):
-        @functools.wraps(func)
-        def wrapper_decorator(*args, **kwargs):
-            try:
-                value = func(*args, **kwargs)
-            except DCNMServerResponseError as e:
-                logger.debug(e.args)
-                e = eval(e.args[0])
-                if isinstance(e['DATA'], (list, tuple)):
-                    logger.critical("{} - {}".format(msg, e['DATA'][0]['message']))
-                elif isinstance(e['DATA'], str):
-                    logger.critical("{} - {}".format(msg, e['DATA']))
-                logger.debug("{}".format(e))
-                value = False
             return value
 
         return wrapper_decorator
@@ -1795,8 +1774,15 @@ def verify_interface_change(dcnm: DcnmInterfaces, interfaces_will_change: dict, 
     failed: set = set()
     success: set = set()
     if verbose: _dbg("Verifying Interface Configurations", " ")
+    interfaces_will_change_local = deepcopy(interfaces_will_change)
+    all_interfaces_nv_pairs_local = deepcopy(dcnm.all_interfaces_nvpairs)
     for interface in interfaces_will_change:
-        if interfaces_will_change[interface] == dcnm.all_interfaces_nvpairs[interface]:
+        #priority changes, so remove from comparison
+        interfaces_will_change_local[interface]['interfaces'][0]['nvPairs'].pop('PRIORITY', None)
+        interfaces_will_change_local[interface]['interfaces'][0]['nvPairs'].pop('FABRIC_NAME', None)
+        all_interfaces_nv_pairs_local[interface]['interfaces'][0]['nvPairs'].pop('PRIORITY', None)
+        all_interfaces_nv_pairs_local[interface]['interfaces'][0]['nvPairs'].pop('FABRIC_NAME', None)
+        if interfaces_will_change_local[interface] == all_interfaces_nv_pairs_local[interface]:
             logger.debug("Verification confirmed for interface {}".format(interface))
             logger.debug("{}".format(interfaces_will_change[interface]))
             success.add(interface)
