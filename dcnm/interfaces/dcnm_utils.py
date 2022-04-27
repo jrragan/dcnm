@@ -13,10 +13,10 @@ try:
 except LookupError:
     HAS_SURROGATEESCAPE = False
 
-
 _COMPOSED_ERROR_HANDLERS = frozenset((None, 'surrogate_or_replace',
                                       'surrogate_or_strict',
                                       'surrogate_then_replace'))
+
 
 def to_text(obj, encoding='utf-8', errors=None, nonstring='simplerepr'):
     """Make sure that a string is a text string
@@ -100,17 +100,22 @@ def to_text(obj, encoding='utf-8', errors=None, nonstring='simplerepr'):
 
     return to_text(value, encoding, errors)
 
+
 def iterkeys(d, **kw):
     return iter(d.keys(**kw))
+
 
 def itervalues(d, **kw):
     return iter(d.values(**kw))
 
+
 def iteritems(d, **kw):
     return iter(d.items(**kw))
 
+
 def iterlists(d, **kw):
     return iter(d.lists(**kw))
+
 
 viewkeys = operator.methodcaller("keys")
 

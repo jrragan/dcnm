@@ -1,7 +1,6 @@
 import json
 import logging
 from copy import deepcopy
-from pprint import pprint
 from typing import Optional, Union
 
 import pandas
@@ -96,7 +95,7 @@ class DcnmFabricInventory(HttpApi):
         response = self.get(path)
         self.fabric_data[fabric] = response.get('DATA')
 
-    def get_all_interfaces_detail(self, serial_no: Optional[str]=None, interface: Optional[str]=None):
+    def get_all_interfaces_detail(self, serial_no: Optional[str] = None, interface: Optional[str] = None):
         path = '/globalInterface'
 
         params = {'serialNumber': serial_no, 'ifName': interface}
@@ -113,7 +112,7 @@ class DcnmFabricInventory(HttpApi):
                 'isPhysical': interface['isPhysical'],
                 'interface_desc': interface['description']}
 
-    def get_all_interfaces_nvpairs(self, serial_no: Optional[str]=None, interface: Optional[str]=None):
+    def get_all_interfaces_nvpairs(self, serial_no: Optional[str] = None, interface: Optional[str] = None):
         path = '/interface'
 
         params = {'serialNumber': serial_no, 'ifName': interface}
@@ -165,7 +164,7 @@ def get_interfaces_to_change(dcnm: DcnmFabricInventory, existing_descriptions: d
         if interface[1] in dcnm.all_leaf_switches:
             # print(details)
             if ('ethernet' in details['interfaces'][0]['ifName'].lower() or
-                    'mgmt' in details['interfaces'][0]['ifName'].lower()) and 'fabric' not in details['policy']:
+                'mgmt' in details['interfaces'][0]['ifName'].lower()) and 'fabric' not in details['policy']:
                 change_desc = get_desc_change(interface, details, existing_descriptions)
                 change_cdp = get_cdp_change(interface, details)
         else:
@@ -184,7 +183,8 @@ def get_desc_change(interface: tuple, detail: dict, existing_descriptions: dict[
     if interface in existing_descriptions:
         logger.debug("interface: {}, new description: {}, old description: {}".format(interface,
                                                                                       existing_descriptions[interface],
-                                                                       detail['interfaces'][0]['nvPairs']['DESC']))
+                                                                                      detail['interfaces'][0][
+                                                                                          'nvPairs']['DESC']))
         detail['interfaces'][0]['nvPairs']['DESC'] = existing_descriptions[interface]
         return True
     return False
@@ -204,7 +204,7 @@ def get_cdp_change(interface: tuple, detail: dict) -> bool:
             logger.debug("CONF: {}".format(detail['interfaces'][0]['nvPairs']['CONF']))
             return True
         else:
-            #print(interface, detail)
+            # print(interface, detail)
             detail['interfaces'][0]['nvPairs']['CONF'] = '{}\\n{}'.format(
                 detail['interfaces'][0]['nvPairs']['CONF'],
                 'no cdp enable')
@@ -305,7 +305,7 @@ if __name__ == '__main__':
     with open('interfaces_will_change.json', 'w') as f:
         f.write(str(interfaces_will_change))
 
-    #pprint(interfaces_will_change)
+    # pprint(interfaces_will_change)
 
-    #make changes
-    #put_interface_changes(dcnm, interfaces_will_change)
+    # make changes
+    # put_interface_changes(dcnm, interfaces_will_change)

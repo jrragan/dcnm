@@ -367,7 +367,7 @@ def main():
     args = command_args()
     mode = "DRYRUN" if args.dryrun else "DEPLOY"
 
-    #set up logging
+    # set up logging
     if args.debug:
         SCREENLOGLEVEL = logging.DEBUG
         print("DEBUGGING")
@@ -445,5 +445,4 @@ def main():
 
 
 if __name__ == '__main__':
-
     main()

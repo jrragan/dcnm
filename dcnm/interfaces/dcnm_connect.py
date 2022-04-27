@@ -1,7 +1,7 @@
+import getpass
 import logging
 import sys
 import traceback
-import getpass
 from pprint import pprint
 
 import requests
@@ -14,6 +14,7 @@ from dcnm_utils import iteritems
 logger = logging.getLogger('dcnm_connect')
 
 requests.packages.urllib3.disable_warnings(requests.packages.urllib3.exceptions.InsecureRequestWarning)
+
 
 class ConnectionError(Exception):
 
@@ -37,6 +38,7 @@ class DCNMUnauthorizedError(Exception):
         super(DCNMUnauthorizedError, self).__init__(message)
         for k, v in iteritems(kwargs):
             setattr(self, k, v)
+
 
 class HttpApi:
 
@@ -92,7 +94,7 @@ class HttpApi:
                         prompt="Enter password for user %s: " % username)
 
                 auth = HTTPBasicAuth(username, password)
-                response = self.connection.post(self.device+path, data, headers=self.headers, auth=auth,
+                response = self.connection.post(self.device + path, data, headers=self.headers, auth=auth,
                                                 timeout=self.timeout, verify=self.verify)
                 if response.status_code == 500:
                     print("Invalid credentials. Failed to perform logon.")
@@ -101,7 +103,8 @@ class HttpApi:
                 else:
                     break
             info = self._verify_response(response, "POST", path, [(400, "Invalid value supplied for expiration time"),
-                                              (500, "Invalid credentials. Failed to perform logon.")])
+                                                                  (500,
+                                                                   "Invalid credentials. Failed to perform logon.")])
         except Exception as e:
             exc_type, exc_value, exc_traceback = sys.exc_info()
             stacktrace = traceback.extract_tb(exc_traceback)
@@ -120,14 +123,15 @@ class HttpApi:
 
         info = {}
         try:
-            response = self.connection.post(self.device+path, headers=self.headers, timeout=self.timeout, verify=self.verify)
+            response = self.connection.post(self.device + path, headers=self.headers, timeout=self.timeout,
+                                            verify=self.verify)
             info = self._verify_response(response, "POST", path, [(400, "Invalid value supplied for Dcnm-Token"),
                                                                   (401, "Unauthorized access to API"),
                                                                   (500,
                                                                    "Invalid token. Failed to perform logout.")],
                                          skip_authcheck=True)
             logger.debug("logout: response: {}".format(info))
-            if self._auth: del(self.headers["Dcnm-Token"])
+            if self._auth: del (self.headers["Dcnm-Token"])
         except Exception as e:
             exc_type, exc_value, exc_traceback = sys.exc_info()
             stacktrace = traceback.extract_tb(exc_traceback)
@@ -143,7 +147,7 @@ class HttpApi:
 
     def check_url_connection(self, headers):
         # Verify HTTPS request URL for DCNM controller is accessible
-        info = {"msg" : " "}
+        info = {"msg": " "}
         try:
             if not self._auth: raise AuthenticationError("You have not logged in and received a Token.")
             response = self.connection.head(self.physical, verify=False, timeout=self.timeout)
@@ -184,7 +188,8 @@ class HttpApi:
         return info
 
     def delete(self, path, headers=None, data=None, errors=None, data_type="json", **kwargs):
-        info = self.send_request('delete', path, headers=headers, data=data, errors=errors, data_type=data_type, **kwargs)
+        info = self.send_request('delete', path, headers=headers, data=data, errors=errors, data_type=data_type,
+                                 **kwargs)
         return info
 
     def send_request(self, method, path, headers=None, data=None, errors=None, data_type="json", **kwargs):
@@ -207,8 +212,9 @@ class HttpApi:
             msg = "Value of <path> does not appear to be formatted properly"
             raise ConnectionError(self._return_info(None, method, path, msg))
 
-        url = self.device+path
-        logger.debug("send_request: method {}: url: {}, headers: {}, kwargs: {}".format(method, url, local_headers, kwargs))
+        url = self.device + path
+        logger.debug(
+            "send_request: method {}: url: {}, headers: {}, kwargs: {}".format(method, url, local_headers, kwargs))
         if self.dryrun and (method == 'post' or method == 'put' or method == 'delete'):
             logger.debug("Dryrun enabled. Returning OK code for this send_request")
             return {"RETURN_CODE": 200}
@@ -220,10 +226,12 @@ class HttpApi:
                 logger.debug("send_request: data: {}".format(data))
                 if data_type == "json":
                     response = self.connection.request(method, url, json=data,
-                                                       headers=local_headers, timeout=self.timeout, verify=self.verify, **kwargs)
+                                                       headers=local_headers, timeout=self.timeout, verify=self.verify,
+                                                       **kwargs)
                 else:
                     response = self.connection.request(method, url, data=data,
-                                                       headers=local_headers, timeout=self.timeout, verify=self.verify, **kwargs)
+                                                       headers=local_headers, timeout=self.timeout, verify=self.verify,
+                                                       **kwargs)
                 logger.debug("send_request: response: {}".format(response))
                 if response.status_code == 401:
                     self._auth = False
@@ -352,7 +360,7 @@ if __name__ == '__main__':
         '%(asctime)s: %(process)d - %(threadName)s - %(funcName)s - %(name)s - %(levelname)s - message: %(message)s')
 
     logging.basicConfig(level=SCREENLOGLEVEL,
-                         format='%(asctime)s: %(threadName)s - %(funcName)s - %(name)s - %(levelname)s - %(message)s')
+                        format='%(asctime)s: %(threadName)s - %(funcName)s - %(name)s - %(levelname)s - %(message)s')
 
     # screen handler
     # ch = logging.StreamHandler()

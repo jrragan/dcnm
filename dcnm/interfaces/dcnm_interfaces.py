@@ -41,7 +41,9 @@ def error_handler(msg):
                 logger.debug("{}".format(e))
                 raise
             return value
+
         return wrapper_decorator
+
     return decorator
 
 
@@ -61,7 +63,9 @@ def action_error_handler(msg):
                 logger.debug("{}".format(e))
                 value = False
             return value
+
         return wrapper_decorator
+
     return decorator
 
 
@@ -712,7 +716,8 @@ class DcnmInterfaces(HttpApi):
                 fabric = self.get_switch_fabric(serial_number)
         path: str = f'/control/fabrics/{fabric}/config-deploy/{serial_number}'
         info = self._check_action_response(self.post(path, errors=[(400, "Invalid value supplied"),
-                                       (500, "Invalid payload or any other internal server error")]),
+                                                                   (500,
+                                                                    "Invalid payload or any other internal server error")]),
                                            "desploy_switch_config", "CONFIG SAVE OF {} switch".format(fabric),
                                            serial_number)
         return info
@@ -900,8 +905,9 @@ class DcnmInterfaces(HttpApi):
         self.timeout = 300
         logger.debug("deploying config fabric {}".format(fabric))
         info = self._check_action_response(self.post(path,
-                         errors=[
-                             (500, "Fabric name is invalid or config deployment failed due to internal server error")]),
+                                                     errors=[
+                                                         (500,
+                                                          "Fabric name is invalid or config deployment failed due to internal server error")]),
                                            "deploy_fabric_config", "DEPLOY OF FABRIC", fabric)
         self.timeout = temp_timers
         return info
@@ -1784,7 +1790,7 @@ def get_orphanport_change(interface: tuple, detail: dict) -> bool:
     return False
 
 
-def verify_interface_change(dcnm: DcnmInterfaces, interfaces_will_change: dict, verbose: bool=True, **kwargs):
+def verify_interface_change(dcnm: DcnmInterfaces, interfaces_will_change: dict, verbose: bool = True, **kwargs):
     dcnm.get_interfaces_nvpairs(save_prev=True, **kwargs)
     failed: set = set()
     success: set = set()
@@ -1806,7 +1812,7 @@ def verify_interface_change(dcnm: DcnmInterfaces, interfaces_will_change: dict, 
     else:
         logger.debug("verify_interface_change: No Failures!")
         if verbose: _dbg("Successfully Verified All Interface Changes! Yay!", " ")
-    #return success, failed
+    # return success, failed
 
 
 def push_to_dcnm(dcnm: DcnmInterfaces, interfaces_to_change: dict, verbose: bool = True) -> set:
@@ -1826,7 +1832,8 @@ def push_to_dcnm(dcnm: DcnmInterfaces, interfaces_to_change: dict, verbose: bool
     return success
 
 
-def deploy_to_fabric_using_interface_deploy(dcnm: DcnmInterfaces, deploy, policies: Optional[Union[list, tuple, str]]=None,
+def deploy_to_fabric_using_interface_deploy(dcnm: DcnmInterfaces, deploy,
+                                            policies: Optional[Union[list, tuple, str]] = None,
                                             verbose: bool = True):
     deploy_list: list = DcnmInterfaces.create_deploy_list(deploy)
     if verbose:
@@ -1867,7 +1874,7 @@ def deploy_to_fabric_using_switch_deploy(dcnm: DcnmInterfaces, serial_number: st
             _dbg('!!Successfully Deployed Config Changes to Switches!!', serial_number)
     else:
         _failed_dbg("Failed deploying to config to switch {}".format(serial_number),
-                   ("Failed deploying configs to the following switches:", serial_number))
+                    ("Failed deploying configs to the following switches:", serial_number))
     print()
     print('=' * 40)
     print('=' * 40)

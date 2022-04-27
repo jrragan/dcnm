@@ -3,11 +3,11 @@ import logging
 import pathlib
 from pickle import dump, load
 from time import strftime, gmtime
-from typing import Union, TextIO
+from typing import Union
 
 from dcnm.interfaces.dcnm_interfaces import DcnmInterfaces, read_existing_descriptions, get_desc_change, get_cdp_change, \
     get_orphanport_change, get_interfaces_to_change, push_to_dcnm, deploy_to_fabric_using_interface_deploy, \
-    verify_interface_change, _dbg, _failed_dbg
+    verify_interface_change, _dbg
 
 
 def command_args() -> argparse.Namespace:
@@ -140,7 +140,7 @@ def _normal_deploy(args: argparse.Namespace, dcnm: DcnmInterfaces):
     policy_ids: Union[set, list, None] = None
     changes_to_make: list[tuple] = []
     if args.description:
-        existing_descriptions = {}
+        existing_descriptions: dict = {}
         if not args.excel:
             dcnm.get_switches_policies(templateName='switch_freeform\Z',
                                        config=r"interface\s+[a-zA-Z]+\d+/?\d*\n\s+description\s+")
@@ -171,6 +171,10 @@ def _normal_deploy(args: argparse.Namespace, dcnm: DcnmInterfaces):
         dump(interfaces_existing_conf, f)
     if args.verbose:
         _dbg("interfaces to change", interfaces_will_change)
+    _deploy_stub(args, dcnm, interfaces_will_change, policy_ids, serials)
+
+
+def _deploy_stub(args, dcnm, interfaces_will_change, policy_ids, serials):
     success: set = push_to_dcnm(dcnm, interfaces_will_change, verbose=args.verbose)
     deploy_to_fabric_using_interface_deploy(dcnm, success, policies=policy_ids, verbose=args.verbose)
     # Verify
@@ -218,7 +222,7 @@ def _fallback(args: argparse.Namespace, dcnm: DcnmInterfaces):
     serials = _get_serial_numbers(args)
     interfaces_existing_conf = depickle(args.icpickle, args.verbose)
     if args.verbose: _dbg("these interface configs will be restored", interfaces_existing_conf)
-    success = push_to_dcnm(dcnm, interfaces_existing_conf)
+
     interface_desc_policies: Union[dict[str, list], None] = None
     policy_ids: Union[list, None] = None
     if args.description and not args.excel:
@@ -229,8 +233,10 @@ def _fallback(args: argparse.Namespace, dcnm: DcnmInterfaces):
                 dcnm.post_new_policy(policy)
                 policy_ids.append([policy["policyId"]])
     if args.verbose: _dbg("these switch policies will be restored", interface_desc_policies)
+    success = push_to_dcnm(dcnm, interfaces_existing_conf)
     deploy_to_fabric_using_interface_deploy(dcnm, success, policies=policy_ids, verbose=args.verbose)
     verify_interface_change(dcnm, interfaces_existing_conf, serial_numbers=serials, verbose=args.verbose)
+    _deploy_stub(args, dcnm, interfaces_existing_conf, policy_ids, serials)
 
 
 def depickle(pickle_file, verbose):
