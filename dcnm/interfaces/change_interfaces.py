@@ -48,7 +48,7 @@ def command_args() -> argparse.Namespace:
                         help="Shortcut for setting screen and logfile levels to DEBUG")
     parser.add_argument("-s", "--screenloglevel", metavar="LOGLEVE", default="INFO",
                         choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], help="Default is INFO.")
-    parser.add_argument("-l", "--loglevel", metavar="LOGLEVEL", default="NONE",
+    parser.add_argument("-l", "--loglevel", metavar="LOGLEVEL", default=None,
                         choices=['NONE', 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
                         help="Default is NONE.")
     parser.add_argument("-c", "--cdp", action="store_true",
@@ -73,6 +73,9 @@ def command_args() -> argparse.Namespace:
                         help="rerun app with this option to fall back to original configuration\n"
                              "if running backout, you should run program with all options included\n"
                              "in the original deploy")
+    parser.add_argument("-t", "--timeout", type=int, metavar="SECONDS", default=300,
+                        help="timeout in seconds of the deploy operations\n" \
+                             "default is 300 seconds")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="verbose mode")
 
@@ -149,6 +152,7 @@ def _normal_deploy(args: argparse.Namespace, dcnm: DcnmInterfaces):
     policy_ids: Union[set, list, None] = None
     changes_to_make: list[tuple] = []
     if args.description:
+        _dbg("Adding Description Changes")
         existing_descriptions: dict = {}
         if not args.excel:
             dcnm.get_switches_policies(templateName='switch_freeform\Z',
@@ -173,8 +177,12 @@ def _normal_deploy(args: argparse.Namespace, dcnm: DcnmInterfaces):
             if args.verbose: _dbg("existing descriptions from file", existing_descriptions)
         changes_to_make.append(
             (get_desc_change, {'existing_descriptions': existing_descriptions}, False))
-    if args.cdp: changes_to_make.append((get_cdp_change, {'mgmt': args.mgmt}, False))
-    if args.orphan: changes_to_make.append((get_orphanport_change, None, True))
+    if args.cdp:
+        _dbg("Adding Disabling of CDP")
+        changes_to_make.append((get_cdp_change, {'mgmt': args.mgmt}, False))
+    if args.orphan:
+        _dbg("Adding Enabling of Orphan Ports")
+        changes_to_make.append((get_orphanport_change, None, True))
     interfaces_will_change, interfaces_existing_conf = get_interfaces_to_change(dcnm, changes_to_make)
     with open(args.icpickle, 'wb') as f:
         dump(interfaces_existing_conf, f)
@@ -185,7 +193,8 @@ def _normal_deploy(args: argparse.Namespace, dcnm: DcnmInterfaces):
 
 def _deploy_stub(args, dcnm, interfaces_will_change, policy_ids, serials):
     success: set = push_to_dcnm(dcnm, interfaces_will_change, verbose=args.verbose)
-    deploy_to_fabric_using_interface_deploy(dcnm, success, policies=policy_ids, verbose=args.verbose)
+    deploy_to_fabric_using_interface_deploy(dcnm, success, policies=policy_ids, deploy_timeout=args.timeout,
+                                            verbose=args.verbose)
     # Verify
     verify_interface_change(dcnm, interfaces_will_change, serial_numbers=serials, verbose=args.verbose)
 
@@ -208,7 +217,7 @@ def _get_serial_numbers(args: argparse.Namespace):
             serials += _read_serials_from_file(args.input_file)
         if not serials:
             logger.critical("No Serial Numbers Provided!")
-            if args.verbose: _dbg("No Serial Numbers Provided!", " ")
+            _dbg("No Serial Numbers Provided!")
             raise DCNMValueError("No Serial Numbers Provided!")
         if args.verbose: _dbg("switch serial numbers provided", serials)
     return serials
@@ -227,7 +236,7 @@ def _fallback(args: argparse.Namespace, dcnm: DcnmInterfaces):
     fallback to original config: push changes to dcnm, deploy changes to fabric and verify changes based on cli args
     """
     logger.info("FALLING BACK")
-    if args.verbose: _dbg("FALLING BACK!", " ")
+    if args.verbose: _dbg("FALLING BACK!")
     serials = _get_serial_numbers(args)
     interfaces_existing_conf = depickle(args.icpickle, args.verbose)
     if args.verbose: _dbg("these interface configs will be restored", interfaces_existing_conf)
@@ -241,10 +250,7 @@ def _fallback(args: argparse.Namespace, dcnm: DcnmInterfaces):
             for policy in interface_desc_policies[serial_number]:
                 dcnm.post_new_policy(policy)
                 policy_ids.append([policy["policyId"]])
-    if args.verbose: _dbg("these switch policies will be restored", interface_desc_policies)
-    success = push_to_dcnm(dcnm, interfaces_existing_conf)
-    deploy_to_fabric_using_interface_deploy(dcnm, success, policies=policy_ids, verbose=args.verbose)
-    verify_interface_change(dcnm, interfaces_existing_conf, serial_numbers=serials, verbose=args.verbose)
+        if args.verbose: _dbg("these switch policies will be restored", interface_desc_policies)
     _deploy_stub(args, dcnm, interfaces_existing_conf, policy_ids, serials)
 
 
@@ -277,7 +283,7 @@ if __name__ == '__main__':
                         format='%(asctime)s: %(process)d - %(threadName)s - %(funcName)s - %(name)s - %(levelname)s - message: %(message)s')
 
     # set up file logging
-    if args.loglevel is not None:
+    if args.loglevel is not None or args.loglevel == 'NONE':
         LOGFILE = "dcnm_interfaces" + strftime("_%y%m%d%H%M%S", gmtime()) + ".log"
         logformat = logging.Formatter(
             '%(asctime)s: %(process)d - %(threadName)s - %(funcName)s - %(name)s - %(levelname)s - message: %(message)s')

@@ -7,7 +7,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from pickle import dump, load
 from pprint import pprint
-from time import sleep, time
+from time import sleep, time, perf_counter
 from typing import Union, Optional, Callable, Any
 
 import pandas
@@ -17,14 +17,16 @@ from dcnm_connect import HttpApi
 
 logger = logging.getLogger('dcnm_interfaces')
 
-def _dbg(header: str, data):
+def _dbg(header: str, data=None):
     """ Output verbose data """
 
-    print("=" * 40)
+    print("=" * 60)
     print(header)
-    print("=" * 40)
-    pprint(data)
-
+    print("=" * 60)
+    if data:
+        pprint(data)
+        print("=" * 60)
+    print()
 
 def error_handler(msg):
     def decorator(func):
@@ -831,7 +833,7 @@ class DcnmInterfaces(HttpApi):
             logger.debug("put_interface_changes: No Failures!")
         return success, failed
 
-    def deploy_interfaces(self, payload: Union[list, dict]) -> Optional[bool]:
+    def deploy_interfaces(self, payload: Union[list, dict], deploy_timeout: int=300) -> Optional[bool]:
         """
 
         :param self:
@@ -864,14 +866,14 @@ class DcnmInterfaces(HttpApi):
         if isinstance(payload, dict):
             payload = [payload]
         temp_timers = self.timeout
-        self.timeout = 300
+        self.timeout = deploy_timeout
         logger.debug("deploy_interfaces: deploying interfaces {}".format(payload))
         info = self._check_action_response(self.post(path, data=payload), "deploy_interfaces",
                                            "DEPLOY OF", payload)
         self.timeout = temp_timers
         return info
 
-    def deploy_fabric_config(self, fabric: str) -> Optional[bool]:
+    def deploy_fabric_config(self, fabric: str, deploy_timeout: int=300) -> Optional[bool]:
         """
 
         :param fabric: name of fabric
@@ -881,7 +883,7 @@ class DcnmInterfaces(HttpApi):
         """
         path = f'/control/fabrics/{fabric}/config-deploy'
         temp_timers = self.timeout
-        self.timeout = 300
+        self.timeout = deploy_timeout
         logger.debug("deploying config fabric {}".format(fabric))
         info = self._check_action_response(self.post(path,
                                                      errors=[
@@ -891,7 +893,7 @@ class DcnmInterfaces(HttpApi):
         self.timeout = temp_timers
         return info
 
-    def deploy_policies(self, policies: list) -> Optional[bool]:
+    def deploy_policies(self, policies: list, deploy_timeout: int=300) -> Optional[bool]:
         """
 
         :param policies: list of policies to deploy, Eg :- ["POLICY-1200","POLICY-1220"]
@@ -901,7 +903,7 @@ class DcnmInterfaces(HttpApi):
         """
         path = '/control/policies/deploy'
         temp_timers = self.timeout
-        self.timeout = 300
+        self.timeout = deploy_timeout
         if isinstance(policies, tuple):
             policies = list(policies)
         elif not isinstance(policies, list):
@@ -1773,7 +1775,7 @@ def verify_interface_change(dcnm: DcnmInterfaces, interfaces_will_change: dict, 
     dcnm.get_interfaces_nvpairs(save_prev=True, **kwargs)
     failed: set = set()
     success: set = set()
-    if verbose: _dbg("Verifying Interface Configurations", " ")
+    if verbose: _dbg("Verifying Interface Configurations")
     interfaces_will_change_local = deepcopy(interfaces_will_change)
     all_interfaces_nv_pairs_local = deepcopy(dcnm.all_interfaces_nvpairs)
     for interface in interfaces_will_change:
@@ -1797,7 +1799,7 @@ def verify_interface_change(dcnm: DcnmInterfaces, interfaces_will_change: dict, 
                         ("Failed verification config changes to for the following switches:", failed))
     else:
         logger.debug("verify_interface_change: No Failures!")
-        if verbose: _dbg("Successfully Verified All Interface Changes! Yay!", " ")
+        if verbose: _dbg("Successfully Verified All Interface Changes! Yay!")
     # return success, failed
 
 
@@ -1806,13 +1808,13 @@ def push_to_dcnm(dcnm: DcnmInterfaces, interfaces_to_change: dict, verbose: bool
     success: set
     failure: set
     if verbose:
-        _dbg("Putting changes to dcnm", " ")
+        _dbg("Putting changes to dcnm")
     success, failure = dcnm.put_interface_changes(interfaces_to_change)
     if failure:
         _failed_dbg("Failed putting to DCNM for the following: {}".format(failure),
                     ("Failed pushing config changes to DCNM for the following switches:", failure))
     else:
-        if verbose: _dbg("Successfully Pushed All Configurations!", " ")
+        if verbose: _dbg("Successfully Pushed All Configurations!")
     logger.debug("push_to_dcnm: success: {}".format(success))
     if verbose: _dbg("Successfully Pushed Following Configs", success)
     return success
@@ -1820,11 +1822,15 @@ def push_to_dcnm(dcnm: DcnmInterfaces, interfaces_to_change: dict, verbose: bool
 
 def deploy_to_fabric_using_interface_deploy(dcnm: DcnmInterfaces, deploy,
                                             policies: Optional[Union[list, tuple, str]] = None,
+                                            deploy_timeout: int=300,
                                             verbose: bool = True):
     deploy_list: list = DcnmInterfaces.create_deploy_list(deploy)
     if verbose:
-        _dbg('Deploying changes to switches', ' ')
-    if dcnm.deploy_interfaces(deploy_list):
+        _dbg('Deploying changes to switches')
+    tic = perf_counter()
+    if dcnm.deploy_interfaces(deploy_list, deploy_timeout=deploy_timeout):
+        toc = perf_counter()
+        _dbg(f"Deployed in {toc - tic:0.4f} seconds")
         logger.debug('successfully deployed to {}'.format(deploy))
         if verbose:
             _dbg('!!Successfully Deployed Config Changes to Switches!!', deploy)
@@ -1837,7 +1843,10 @@ def deploy_to_fabric_using_interface_deploy(dcnm: DcnmInterfaces, deploy,
     if policies:
         if isinstance(policies, str):
             policies = [policies]
-        if dcnm.deploy_policies(policies):
+        tic = perf_counter()
+        if dcnm.deploy_policies(policies, deploy_timeout=deploy_timeout):
+            toc = perf_counter()
+            _dbg(f"Deployed in {toc - tic:0.4f} seconds")
             logger.debug('successfully deployed policies {}'.format(policies))
             if verbose:
                 _dbg('!!Successfully Deployed Config Changes to Switches!!', policies)
@@ -1851,10 +1860,15 @@ def deploy_to_fabric_using_interface_deploy(dcnm: DcnmInterfaces, deploy,
     print('=' * 40)
 
 
-def deploy_to_fabric_using_switch_deploy(dcnm: DcnmInterfaces, serial_number: str, verbose: bool = True):
+def deploy_to_fabric_using_switch_deploy(dcnm: DcnmInterfaces, serial_number: str,
+                                         deploy_timeout: int=300,
+                                         verbose: bool = True):
     if verbose:
         _dbg('Deploying changes to switches')
+    tic = perf_counter()
     if dcnm.deploy_switch_config(serial_number):
+        toc = perf_counter()
+        _dbg(f"Deployed in {toc - tic:0.4f} seconds")
         logger.debug('successfully deployed config to switch {}'.format(serial_number))
         if verbose:
             _dbg('!!Successfully Deployed Config Changes to Switches!!', serial_number)
@@ -1887,7 +1901,7 @@ if __name__ == '__main__':
         '%(asctime)s: %(process)d - %(threadName)s - %(funcName)s - %(name)s - %(levelname)s - message: %(message)s')
 
     logging.basicConfig(level=SCREENLOGLEVEL,
-                        format='%(asctime)s: %(threadName)s - %(funcName)s - %(name)s - %(levelname)s - %(message)s')
+                        format='%(asctime)s: %(process)d - %(threadName)s - %(funcName)s - %(name)s - %(levelname)s - %(message)s')
 
     # screen handler
     # ch = logging.StreamHandler()
