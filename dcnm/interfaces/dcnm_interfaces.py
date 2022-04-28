@@ -1822,7 +1822,7 @@ def push_to_dcnm(dcnm: DcnmInterfaces, interfaces_to_change: dict, verbose: bool
 
 def deploy_to_fabric_using_interface_deploy(dcnm: DcnmInterfaces, deploy,
                                             policies: Optional[Union[list, tuple, str]] = None,
-                                            deploy_timeout: int=300,
+                                            deploy_timeout: int = 300,
                                             verbose: bool = True):
     deploy_list: list = DcnmInterfaces.create_deploy_list(deploy)
     if verbose:
@@ -1843,16 +1843,17 @@ def deploy_to_fabric_using_interface_deploy(dcnm: DcnmInterfaces, deploy,
     if policies:
         if isinstance(policies, str):
             policies = [policies]
+        if verbose: _dbg("POLICIES: ", policies)
         tic = perf_counter()
         if dcnm.deploy_policies(policies, deploy_timeout=deploy_timeout):
             toc = perf_counter()
             _dbg(f"Deployed in {toc - tic:0.4f} seconds")
             logger.debug('successfully deployed policies {}'.format(policies))
             if verbose:
-                _dbg('!!Successfully Deployed Config Changes to Switches!!', policies)
+                _dbg('!!Successfully Deployed Config Policies to Switches!!', policies)
         else:
             _failed_dbg("Failed deploying policies {}".format(policies),
-                        ('Failed deploying th following policies:', policies))
+                        ('Failed deploying the following policies:', policies))
     print()
     print('=' * 40)
     print('=' * 40)
@@ -1861,7 +1862,7 @@ def deploy_to_fabric_using_interface_deploy(dcnm: DcnmInterfaces, deploy,
 
 
 def deploy_to_fabric_using_switch_deploy(dcnm: DcnmInterfaces, serial_number: str,
-                                         deploy_timeout: int=300,
+                                         deploy_timeout: int = 300,
                                          verbose: bool = True):
     if verbose:
         _dbg('Deploying changes to switches')

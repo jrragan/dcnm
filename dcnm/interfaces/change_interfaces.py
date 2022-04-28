@@ -4,8 +4,7 @@ import pathlib
 import sys
 from pickle import dump, load
 from time import strftime, gmtime
-from typing import Union
-
+from typing import Union, Optional
 
 from dcnm_interfaces import DcnmInterfaces, read_existing_descriptions, get_desc_change, get_cdp_change, \
     get_orphanport_change, get_interfaces_to_change, push_to_dcnm, deploy_to_fabric_using_interface_deploy, \
@@ -156,14 +155,14 @@ def _normal_deploy(args: argparse.Namespace, dcnm: DcnmInterfaces):
         existing_descriptions: dict = {}
         if not args.excel:
             dcnm.get_switches_policies(templateName='switch_freeform\Z',
-                                       config=r"interface\s+[a-zA-Z]+\d+/?\d*\n\s+description\s+")
+                                       config=r"interface\s+[a-zA-Z]+\d+/?\d*\n\s+[Dd]escription\s+")
             existing_descriptions_from_policies: list = DcnmInterfaces.get_info_from_policies_config(
                 dcnm.all_switches_policies,
-                r"interface\s+([a-zA-Z]+\d+/?\d*)\n\s+description\s+(.*)")
+                r"interface\s+([a-zA-Z]+\d+/?\d*)\n\s+[dD]escription\s+(.*)")
             if args.verbose:
                 _dbg("switch policies", dcnm.all_switches_policies)
                 _dbg("existing description from policies", existing_descriptions_from_policies)
-            policy_ids: set = {c.policyId for c in existing_descriptions_from_policies}
+            policy_ids: list = list({c.policyId for c in existing_descriptions_from_policies})
             if args.verbose: _dbg("policy ids", policy_ids)
             # delete the policy
             dcnm.delete_switch_policies(list(policy_ids))
@@ -191,7 +190,8 @@ def _normal_deploy(args: argparse.Namespace, dcnm: DcnmInterfaces):
     _deploy_stub(args, dcnm, interfaces_will_change, policy_ids, serials)
 
 
-def _deploy_stub(args, dcnm, interfaces_will_change, policy_ids, serials):
+def _deploy_stub(args: argparse.Namespace, dcnm: DcnmInterfaces, interfaces_will_change: dict,
+                 policy_ids: Optional[Union[list, tuple, str]], serials: list):
     success: set = push_to_dcnm(dcnm, interfaces_will_change, verbose=args.verbose)
     deploy_to_fabric_using_interface_deploy(dcnm, success, policies=policy_ids, deploy_timeout=args.timeout,
                                             verbose=args.verbose)
@@ -245,16 +245,17 @@ def _fallback(args: argparse.Namespace, dcnm: DcnmInterfaces):
     policy_ids: Union[list, None] = None
     if args.description and not args.excel:
         interface_desc_policies: dict[str, list] = depickle(args.pickle, args.verbose)
-        policy_ids: list = []
+        policy_ids: set = set()
         for serial_number in interface_desc_policies:
             for policy in interface_desc_policies[serial_number]:
                 dcnm.post_new_policy(policy)
-                policy_ids.append([policy["policyId"]])
+                policy_ids.add(policy["policyId"])
+        policy_ids: list = list(policy_ids)
         if args.verbose: _dbg("these switch policies will be restored", interface_desc_policies)
     _deploy_stub(args, dcnm, interfaces_existing_conf, policy_ids, serials)
 
 
-def depickle(pickle_file, verbose):
+def depickle(pickle_file: str, verbose: bool):
     file_path = pathlib.Path(pickle_file)
     if file_path.is_file():
         with open(pickle_file, 'rb') as f:
