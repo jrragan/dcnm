@@ -8,5 +8,9 @@
 /dcnm/interfaces/mgmt_only.json
 /dcnm/interfaces/switches_configuration_policies.pickle
 /dcnm/interfaces/test.csv
+/dcnm/interfaces/inventory.py
+/dcnm/interfaces/del_bad_vpcs.py
+/dcnm/interfaces/utils.py
+/dcnm/.gitignore
 /dcnm/connection/
 /dcnm/inventory/
