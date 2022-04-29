@@ -134,8 +134,8 @@ def _normal_deploy(args: argparse.Namespace, dcnm: DcnmInterfaces):
 
     push changes to dcnm, deploy changes to fabric and verify changes based on cli args
     """
-    logger.info("DEPLOYING")
-    if args.verbose: _dbg("DEPLOYING", " ")
+    logger.info("_normal_deploy: Pushing to DCNM and Deploying")
+    if args.verbose: _dbg("Pushing to DCNM and Deploying")
     serials = _get_serial_numbers(args)
     # get interface info for these serial numbers
     dcnm.get_interfaces_nvpairs(serial_numbers=serials)
@@ -163,7 +163,7 @@ def _normal_deploy(args: argparse.Namespace, dcnm: DcnmInterfaces):
                 _dbg("switch policies", dcnm.all_switches_policies)
                 _dbg("existing description from policies", existing_descriptions_from_policies)
             policy_ids: list = list({c.policyId for c in existing_descriptions_from_policies})
-            if args.verbose: _dbg("policy ids", policy_ids)
+            if args.verbose: _dbg("deleting policy ids", policy_ids)
             # delete the policy
             dcnm.delete_switch_policies(list(policy_ids))
             existing_descriptions: dict[tuple, str] = {k: v for c in existing_descriptions_from_policies for k, v in
@@ -194,6 +194,7 @@ def _deploy_stub(args: argparse.Namespace, dcnm: DcnmInterfaces, interfaces_will
                  policy_ids: Optional[Union[list, tuple, str]], serials: list):
     success: set = push_to_dcnm(dcnm, interfaces_will_change, verbose=args.verbose)
     deploy_to_fabric_using_interface_deploy(dcnm, success, policies=policy_ids, deploy_timeout=args.timeout,
+                                            fallback=args.backout,
                                             verbose=args.verbose)
     # Verify
     verify_interface_change(dcnm, interfaces_will_change, serial_numbers=serials, verbose=args.verbose)
