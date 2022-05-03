@@ -215,7 +215,7 @@ class HttpApi:
         url = self.device + path
         logger.debug(
             "send_request: method {}: url: {}, headers: {}, kwargs: {}".format(method, url, local_headers, kwargs))
-        if self.dryrun and (method == 'post' or method == 'put' or method == 'delete'):
+        if self.dryrun and method in {'post', 'put', 'delete'}:
             logger.debug("Dryrun enabled. Returning OK code for this send_request")
             return {"RETURN_CODE": 200}
         self.check_url_connection(local_headers)

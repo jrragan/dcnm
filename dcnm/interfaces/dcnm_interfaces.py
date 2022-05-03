@@ -2,16 +2,21 @@ import functools
 import json
 import logging
 import re
+import threading
 from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass
+from datetime import timedelta
+from itertools import cycle
 from pickle import dump, load
 from pprint import pprint
 from time import sleep, time, perf_counter
 from typing import Union, Optional, Callable, Any
 
 import pandas
+from colorama import init, Back, Fore, Style
 from pandas import read_excel
+from yaspin import yaspin
 
 from dcnm_connect import HttpApi
 
@@ -46,6 +51,34 @@ def error_handler(msg):
             return value
 
         return wrapper_decorator
+
+    return decorator
+
+def _spin(msg, start, frames, _stop_spin):
+    while not _stop_spin.is_set():
+        frame = next(frames)
+        sec, fsec = divmod(round(100 * (time() - start)), 100)
+        frame += "  ({} : {}.{:02.0f})".format(msg, timedelta(seconds=sec), fsec)
+        print('\r', frame, sep='', end='', flush=True)
+        sleep(0.2)
+
+def spinner(msg="Elapsed Time"):
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper_decrorator(*args, **kwargs):
+            _stop_spin = threading.Event()
+            start = time()
+            _spin_thread = threading.Thread(target=_spin, args=(msg, start, cycle(r'-\|/'), _stop_spin))
+            _spin_thread.start()
+            value = func(*args, **kwargs)
+            stop = time()
+            if _spin_thread:
+                _stop_spin.set()
+                _spin_thread.join()
+            print()
+            _dbg("Elapsed Time: ", stop - start)
+            return value
+        return wrapper_decrorator
 
     return decorator
 
@@ -677,6 +710,7 @@ class DcnmInterfaces(HttpApi):
             with open(save_to_file, 'w') as f:
                 f.write(str(self.all_interfaces_nvpairs))
 
+    @spinner()
     def deploy_switch_config(self, serial_number: str, fabric: Optional[str] = None) -> bool:
         """
 
@@ -833,6 +867,7 @@ class DcnmInterfaces(HttpApi):
             logger.debug("put_interface_changes: No Failures!")
         return success, failed
 
+    @spinner()
     def deploy_interfaces(self, payload: Union[list, dict], deploy_timeout: int=300) -> Optional[bool]:
         """
 
@@ -873,6 +908,7 @@ class DcnmInterfaces(HttpApi):
         self.timeout = temp_timers
         return info
 
+    @spinner()
     def deploy_fabric_config(self, fabric: str, deploy_timeout: int=300) -> Optional[bool]:
         """
 
@@ -893,6 +929,7 @@ class DcnmInterfaces(HttpApi):
         self.timeout = temp_timers
         return info
 
+    @spinner()
     def deploy_policies(self, policies: list, deploy_timeout: int=300) -> Optional[bool]:
         """
 
@@ -1275,6 +1312,7 @@ class DcnmInterfaces(HttpApi):
         logger.debug("get_switches_status: result: {}".format(result_status))
         return result_status
 
+    @spinner("elapsed time waiting for switches status")
     def wait_for_switches_status(self, status: str = "In-Sync", timeout: float = 300, sleep_time: float = 10,
                                  serial_numbers: Optional[Union[str, list[str]]] = None) -> Union[bool, dict]:
         """
@@ -1296,6 +1334,8 @@ class DcnmInterfaces(HttpApi):
         """
         start = time()
         logger.info("Checking for switch status")
+        response: Union[None, dict] = None
+        result: bool = False
         while (time() - start) <= timeout:
             response: dict = self.get_switches_status(serial_numbers=serial_numbers)
             logger.debug("wait_for_switches_status: response: {}".format(response))
@@ -1828,10 +1868,7 @@ def deploy_to_fabric_using_interface_deploy(dcnm: DcnmInterfaces, deploy,
     deploy_list: list = DcnmInterfaces.create_deploy_list(deploy)
     if verbose:
         _dbg('Deploying changes to switches')
-    tic = perf_counter()
     if dcnm.deploy_interfaces(deploy_list, deploy_timeout=deploy_timeout):
-        toc = perf_counter()
-        _dbg(f"Deployed in {toc - tic:0.4f} seconds")
         logger.debug('successfully deployed to {}'.format(deploy))
         if verbose:
             _dbg('!!Successfully Deployed Config Changes to Switches!!', deploy)
@@ -1845,10 +1882,7 @@ def deploy_to_fabric_using_interface_deploy(dcnm: DcnmInterfaces, deploy,
         if isinstance(policies, str):
             policies = [policies]
         if verbose: _dbg("DEPLOYING POLICIES: ", policies)
-        tic = perf_counter()
         if dcnm.deploy_policies(policies, deploy_timeout=deploy_timeout):
-            toc = perf_counter()
-            _dbg(f"Deployed in {toc - tic:0.4f} seconds")
             logger.debug('successfully deployed policies {}'.format(policies))
             if verbose:
                 _dbg('!!Successfully Deployed Config Policies to Switches!!', policies)
@@ -1885,15 +1919,17 @@ def deploy_to_fabric_using_switch_deploy(dcnm: DcnmInterfaces, serial_number: st
 
 
 def _failed_dbg(log_msg: str, messages: tuple):
+    init()
     logger.critical(log_msg)
     print()
     print()
-    print('*' * 60)
+    print(Back.BLACK + Fore.RED + '*' * 60)
     for i in messages:
         pprint(i)
     print('*' * 60)
     print()
     print()
+    print(Style.RESET_ALL)
 
 
 if __name__ == '__main__':

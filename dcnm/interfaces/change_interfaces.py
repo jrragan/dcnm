@@ -211,7 +211,7 @@ def _get_serial_numbers(args: argparse.Namespace):
     get serial numbers from cli or from filename provided by cli
     """
     # get serial numbers
-    serials = None
+    serials: Union[None, list] = None
     if not args.all:
         serials: list = args.serials
         if args.input_file:
@@ -282,13 +282,13 @@ if __name__ == '__main__':
     print(SCREENLOGLEVEL)
 
     logging.basicConfig(level=SCREENLOGLEVEL,
-                        format='%(asctime)s: %(process)d - %(threadName)s - %(funcName)s - %(name)s - %(levelname)s - message: %(message)s')
+                        format='%(asctime)s: %(process)d - %(threadName)s - (%(filename)s:%(lineno)d) - %(funcName)s - %(levelname)s - message: %(message)s')
 
     # set up file logging
     if args.loglevel is not None or args.loglevel == 'NONE':
         LOGFILE = "dcnm_interfaces" + strftime("_%y%m%d%H%M%S", gmtime()) + ".log"
         logformat = logging.Formatter(
-            '%(asctime)s: %(process)d - %(threadName)s - %(funcName)s - %(name)s - %(levelname)s - message: %(message)s')
+            '%(asctime)s: %(process)d - %(threadName)s - (%(filename)s:%(lineno)d) - %(funcName)s - %(levelname)s - message: %(message)s')
         if args.debug:
             FILELOGLEVEL = logging.DEBUG
         else:
@@ -307,6 +307,7 @@ if __name__ == '__main__':
     if args.verbose: _dbg("args:", args)
     # prompt stdin for username and password
     print("args parsed -- Running in %s mode" % mode)
+    if args.verbose: _dbg("Connecting to DCNM...")
     dcnm = DcnmInterfaces(args.dcnm, dryrun=args.dryrun)
     dcnm.login(username=args.username)
 
