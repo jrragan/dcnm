@@ -1531,8 +1531,8 @@ class DcnmInterfaces(HttpApi):
     @staticmethod
     def get_info_from_policies_config(policies: dict[str, list], config: str,
                                       key_tuple: Optional[Union[list[int], tuple[int]]] = [0],
-                                      value_tuple: Optional[Union[list[int], tuple[int]]] = [1]) -> list[
-        info_from_policies]:
+                                      value_tuple: Optional[Union[list[int], tuple[int]]] = [1]) -> Optional[list[
+        info_from_policies]]:
         """
 
         :param policies: a dictionary of switch policies
@@ -1549,10 +1549,11 @@ class DcnmInterfaces(HttpApi):
         :rtype: list of dictionaries
 
         takes switch policies and patterns to match
-        returns list of dictionaries where the key is either just the switch SN or a tuple including the serial number
-        and the values are the match or a tuple of match groups
+        returns list of info_from_polices data class objects of the form
+        info_from_policies(existing_descriptions_local, policyId)
+        where existing_descriptions is a dictionary and the policyId is a str
         """
-        existing_policyId_local: list = list()
+        existing_policyId_local = []
         policies_local: dict = deepcopy(policies)
         pattern = re.compile(config, re.MULTILINE)
         for SN, policies in policies_local.items():
@@ -1583,6 +1584,8 @@ class DcnmInterfaces(HttpApi):
                     existing_policyId_local.append(info_from_policies(existing_descriptions_local, policyId))
         logger.debug(
             "read_existing_descriptions_from_policies: existing descriptions: {}".format(existing_descriptions_local))
+        if not existing_policyId_local:
+            return None
         return existing_policyId_local
 
     def _check_response(self, response: dict):
@@ -1705,47 +1708,6 @@ def _run_functions(change_functions, details, interface, leaf=True):
         else:
             change = change or False
 
-    # if (change_functions[0][2] and leaf) or not change_functions[0][2]:
-    #     if change_functions[0][1]:
-    #         logger.debug("_run_functions: sending {} to function {}".format(interface, change_functions[0]))
-    #         logger.debug("detail: {}".format(details))
-    #         logger.debug("{}".format(change_functions[0][0]))
-    #         change = change or change_functions[0][0](interface, details, **change_functions[0][1])
-    #     else:
-    #         logger.debug("_run_functions: sending {} to function {}".format(interface, change_functions[0]))
-    #         logger.debug("detail: {}".format(details))
-    #         logger.debug("{}".format(change_functions[0][0]))
-    #         change = change or change_functions[0][0](interface, details)
-    # else:
-    #     change = change or False
-    #
-    # if (change_functions[1][2] and leaf) or not change_functions[1][2]:
-    #     if change_functions[1][1]:
-    #         logger.debug("_run_functions: sending {} to function {}".format(interface, change_functions[1]))
-    #         logger.debug("detail: {}".format(details))
-    #         logger.debug("{}".format(change_functions[1][0]))
-    #         change = change or change_functions[1][0](interface, details, **change_functions[1][1])
-    #     else:
-    #         logger.debug("_run_functions: sending {} to function {}".format(interface, change_functions[1]))
-    #         logger.debug("detail: {}".format(details))
-    #         logger.debug("{}".format(change_functions[1][0]))
-    #         change = change or change_functions[1][0](interface, details)
-    # else:
-    #     change = change or False
-    #
-    # if (change_functions[2][2] and leaf) or not change_functions[2][2]:
-    #     if change_functions[2][1]:
-    #         logger.debug("_run_functions: sending {} to function {}".format(interface, change_functions[2]))
-    #         logger.debug("detail: {}".format(details))
-    #         logger.debug("{}".format(change_functions[2][0]))
-    #         change = change or change_functions[2][0](interface, details, **change_functions[2][1])
-    #     else:
-    #         logger.debug("_run_functions: sending {} to function {}".format(interface, change_functions[2]))
-    #         logger.debug("detail: {}".format(details))
-    #         logger.debug("{}".format(change_functions[2][0]))
-    #         change = change or change_functions[2][0](interface, details)
-    # else:
-    #     change = change or False
     return change
 
 
