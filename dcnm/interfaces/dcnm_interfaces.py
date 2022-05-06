@@ -1643,7 +1643,8 @@ def get_interfaces_to_change(dcnm: DcnmInterfaces,
     :param dcnm: dcnm object
     :type dcnm: DcnmInterfaces
     :param change_functions: a list of tuples with each tuple of the form
-    (a function object to call, an optional dictionary containing args to pass to function
+    (a function object to call, an optional dictionary containing args to pass to function, a boolean which is True
+    if the function is to run only on leaf switches)
     :type change_functions: list[tuple[Callable, Optional[dict], bool]]
     :return: a tuple of dictionaries
     :rtype: tuple[dict[tuple, dict], dict[tuple, dict]]
@@ -1658,17 +1659,10 @@ def get_interfaces_to_change(dcnm: DcnmInterfaces,
     interfaces_to_change: dict[tuple, dict] = {}
     interfaces_original: dict[tuple, dict] = {}
     for interface, details in existing_interfaces.items():
-        change = False
-        if interface[1] in dcnm.all_leaf_switches.keys():
-            # print(details)
-            if ('ethernet' in details['interfaces'][0]['ifName'].lower() or
-                'mgmt' in details['interfaces'][0]['ifName'].lower()) and 'fabric' not in details['policy']:
-                change = _run_functions(change_functions, details, interface, leaf=True)
-        else:
-            if 'mgmt' not in interface[0]:
-                continue
-            else:
-                change = _run_functions(change_functions, details, interface, leaf=False)
+        change: bool = False
+        # print(details)
+        change = _run_functions(change_functions, details, interface,
+                                leaf=interface[1] in dcnm.all_leaf_switches)
         if change:
             interfaces_original[interface] = dcnm.all_interfaces_nvpairs[interface]
             interfaces_to_change[interface] = details
@@ -1694,6 +1688,7 @@ def _run_functions(change_functions, details, interface, leaf=True):
     """
     change = False
     for function in change_functions:
+        #if the function is to run only on leaf switches and this is a leaf switch or the function can run on any switch
         if (function[2] and leaf) or not function[2]:
             if function[1]:
                 logger.debug("_run_functions: sending {} to function {}".format(interface, function))
@@ -1714,8 +1709,9 @@ def _run_functions(change_functions, details, interface, leaf=True):
 def get_desc_change(interface: tuple, detail: dict, existing_descriptions: dict[tuple, str]) -> bool:
     logger.debug("start get_desc_change: interface {}".format(interface))
     logger.debug("detail: {}".format(detail))
-    if interface in existing_descriptions and detail['interfaces'][0]['nvPairs']['DESC'] != existing_descriptions[
-        interface]:
+    #if it's not a vpc (e.g. vpc1) interface and the description is not already the desired description
+    if interface in existing_descriptions and 'vpc' not in interface[0].lower() and \
+            detail['interfaces'][0]['nvPairs']['DESC'] != existing_descriptions[interface]:
         logger.debug("interface: {}, new description: {}, old description: {}".format(interface,
                                                                                       existing_descriptions[interface],
                                                                                       detail['interfaces'][0][
@@ -1728,12 +1724,16 @@ def get_desc_change(interface: tuple, detail: dict, existing_descriptions: dict[
 def get_cdp_change(interface: tuple, detail: dict, mgmt: bool = True) -> bool:
     logger.debug("start get_cdp_change: interface {}".format(interface))
     logger.debug("detail: {}".format(detail))
+    #if the mgmt flag is set and it's a mgmt interface and cdp is enabled
     if mgmt and 'mgmt' in interface[0] and detail['interfaces'][0]['nvPairs']['CDP_ENABLE'] == 'true':
         detail['interfaces'][0]['nvPairs']['CDP_ENABLE'] = 'false'
         logger.debug("interface: {}, changing cdp".format(interface))
         logger.debug("CDP_ENABLE: {}".format(detail['interfaces'][0]['nvPairs']['CDP_ENABLE']))
         return True
-    elif 'mgmt' not in interface[0] and 'no cdp enable' not in detail['interfaces'][0]['nvPairs']['CONF']:
+    #it it's a leaf switch and and ethernet interface and not a fabric interface and cdp is enabled
+    elif interface[1] in dcnm.all_leaf_switches and 'ethernet' in interface[0].lower() \
+            and 'fabric' not in detail['policy'] \
+            and 'no cdp enable' not in detail['interfaces'][0]['nvPairs']['CONF']:
         if not detail['interfaces'][0]['nvPairs']['CONF']:
             detail['interfaces'][0]['nvPairs']['CONF'] = 'no cdp enable'
             logger.debug("interface: {}, changing cdp".format(interface))
@@ -1753,9 +1753,8 @@ def get_cdp_change(interface: tuple, detail: dict, mgmt: bool = True) -> bool:
 def get_orphanport_change(interface: tuple, detail: dict) -> bool:
     logger.debug("start get_orphanport_change: interface {}".format(interface))
     logger.debug("detail: {}".format(detail))
-    if 'mgmt' in interface[0]:
-        return False
-    elif 'mgmt' not in interface[0] and ('int_trunk_host' in detail['policy'] or 'int_access_host' in detail[
+    #if not a mgmt interface and either a trunk host or access_host interface
+    if 'mgmt' not in interface[0] and ('int_trunk_host' in detail['policy'] or 'int_access_host' in detail[
         'policy']) and 'vpc orphan-port enable' not in detail['interfaces'][0]['nvPairs']['CONF']:
         if not detail['interfaces'][0]['nvPairs']['CONF']:
             detail['interfaces'][0]['nvPairs']['CONF'] = 'vpc orphan-port enable'
