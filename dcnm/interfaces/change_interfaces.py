@@ -8,7 +8,7 @@ from typing import Union, Optional
 
 from dcnm_interfaces import DcnmInterfaces, read_existing_descriptions, get_desc_change, get_cdp_change, \
     get_orphanport_change, get_interfaces_to_change, push_to_dcnm, deploy_to_fabric_using_interface_deploy, \
-    verify_interface_change, _dbg
+    verify_interface_change, _dbg, deploy_to_fabric_using_switch_deploy
 
 
 def command_args() -> argparse.Namespace:
@@ -68,6 +68,11 @@ def command_args() -> argparse.Namespace:
                         metavar="FILE",
                         help="filename for pickle file used to save original interface configuration policies\n"
                              "if included for deploy, it must also be included for backout")
+    parser.add_argument("-j", "--switch_deploy", action="store_true",
+                        help="By default interface deploy is used (along with policy deploy when needed."
+                             "In certain situations this can lead to the need for a second deploy especially "
+                             "when there is a switch level policy applying an interface level config. This will"
+                             "enable a switch level deploy method.")
     parser.add_argument("-b", "--backout", action="store_true",
                         help="rerun app with this option to fall back to original configuration\n"
                              "if running backout, you should run program with all options included\n"
@@ -139,7 +144,7 @@ def _normal_deploy(args: argparse.Namespace, dcnm: DcnmInterfaces):
     serials = _get_serial_numbers(args)
     # get interface info for these serial numbers
     dcnm.get_interfaces_nvpairs(serial_numbers=serials)
-    if args.verbose: _dbg("interfaces details and nvpairs", dcnm.all_interfaces_nvpairs)
+    #if args.verbose: _dbg("interfaces details and nvpairs", dcnm.all_interfaces_nvpairs)
     # get role and fabric info for these serial numbers
     if args.all:
         dcnm.get_all_switches()
@@ -193,7 +198,10 @@ def _normal_deploy(args: argparse.Namespace, dcnm: DcnmInterfaces):
 def _deploy_stub(args: argparse.Namespace, dcnm: DcnmInterfaces, interfaces_will_change: dict,
                  policy_ids: Optional[Union[list, tuple, str]], serials: list):
     success: set = push_to_dcnm(dcnm, interfaces_will_change, verbose=args.verbose)
-    deploy_to_fabric_using_interface_deploy(dcnm, success, policies=policy_ids, deploy_timeout=args.timeout,
+    if args.switch_deploy:
+        deploy_to_fabric_using_switch_deploy(dcnm, serials, deploy_timeout=args.timeout, verbose=args.verbose)
+    else:
+        deploy_to_fabric_using_interface_deploy(dcnm, success, policies=policy_ids, deploy_timeout=args.timeout,
                                             fallback=args.backout,
                                             verbose=args.verbose)
     # Verify

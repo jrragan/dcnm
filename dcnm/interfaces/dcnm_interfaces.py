@@ -2,7 +2,9 @@ import functools
 import json
 import logging
 import re
+import sys
 import threading
+import traceback
 from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass
@@ -70,13 +72,23 @@ def spinner(msg="Elapsed Time"):
             start = time()
             _spin_thread = threading.Thread(target=_spin, args=(msg, start, cycle(r'-\|/'), _stop_spin))
             _spin_thread.start()
-            value = func(*args, **kwargs)
-            stop = time()
-            if _spin_thread:
-                _stop_spin.set()
-                _spin_thread.join()
-            print()
-            _dbg("Elapsed Time: ", stop - start)
+            try:
+                value = func(*args, **kwargs)
+            except Exception as e:
+                exc_type, exc_value, exc_traceback = sys.exc_info()
+                stacktrace = traceback.extract_tb(exc_traceback)
+                logger.debug(
+                    "response {}".format(value))
+                logger.debug(sys.exc_info())
+                logger.debug(stacktrace)
+                raise
+            finally:
+                stop = time()
+                if _spin_thread:
+                    _stop_spin.set()
+                    _spin_thread.join()
+                print()
+                _dbg("Elapsed Time: ", stop - start)
             return value
         return wrapper_decrorator
 
@@ -117,10 +129,15 @@ class DCNMPolicyDeployError(Exception):
     pass
 
 
+class DCNMSwitchesSwitchesParameterError(Exception):
+    pass
+
+
 class DcnmInterfaces(HttpApi):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        self.all_switches_vpc_pairs: dict[str, Optional[str]] = {}
         self.all_leaf_switches: dict[str, str] = {}
         self.all_notleaf_switches: dict[str, str] = {}
         self.all_interfaces: dict[tuple, dict] = {}
@@ -395,6 +412,32 @@ class DcnmInterfaces(HttpApi):
         if save_to_file is not None:
             with open(save_to_file, 'w') as f:
                 f.write(str(self.all_switches_policies))
+
+    @error_handler("ERROR: get_vpc_pair: getting vpc pairs for serial number")
+    def get_vpc_pair(self, serial_number: str) -> Optional[str]:
+        """ Get vpc pair data from api and return data structure """
+
+        path = "/interface/vpcpair_serial_number"
+        data = self._check_response(dcnm.get(path, errors=[
+            (500, "The specified serial number is not part of a vPC pair or any other internal server error.")],
+                        params={'serial_number': serial_number}))
+        if 'vpc_pair_sn' in data["DATA"]:
+            return data['DATA']['vpc_pair_sn']
+
+        return None
+
+    def get_switches_vpc_pairs(self):
+        if not self.all_leaf_switches:
+            raise DCNMSwitchesSwitchesParameterError("You must first run either get_all_switches or "
+                                                     "get_switches_by_serial_numbers")
+        for serial_number in self.all_leaf_switches:
+            if serial_number not in self.all_switches_vpc_pairs:
+                pair = self.get_vpc_pair(serial_number)
+                if pair is not None:
+                    peer1, peer2 = pair.split('~')
+                    self.all_switches_vpc_pairs[peer1], self.all_switches_vpc_pairs[peer2] = peer2, peer1
+                else:
+                    self.all_switches_vpc_pairs[serial_number] = None
 
     def delete_switch_policies(self, policyId: Union[str, list]):
         if isinstance(policyId, str):
@@ -711,7 +754,7 @@ class DcnmInterfaces(HttpApi):
                 f.write(str(self.all_interfaces_nvpairs))
 
     @spinner()
-    def deploy_switch_config(self, serial_number: str, fabric: Optional[str] = None) -> bool:
+    def deploy_switch_config(self, serial_number: str, fabric: Optional[str] = None, deploy_timeout: int=300) -> bool:
         """
 
         :param serial_number: required, serial number of switch
@@ -730,11 +773,14 @@ class DcnmInterfaces(HttpApi):
             if not fabric:
                 fabric = self.get_switch_fabric(serial_number)
         path: str = f'/control/fabrics/{fabric}/config-deploy/{serial_number}'
+        temp_timers = self.timeout
+        self.timeout = deploy_timeout
         info = self._check_action_response(self.post(path, errors=[(400, "Invalid value supplied"),
                                                                    (500,
                                                                     "Invalid payload or any other internal server error")]),
                                            "desploy_switch_config", "CONFIG SAVE OF {} switch".format(fabric),
                                            serial_number)
+        self.timeout = temp_timers
         return info
 
     def put_interface(self, interface: tuple, details: dict) -> bool:
@@ -967,257 +1013,72 @@ class DcnmInterfaces(HttpApi):
         response = self._check_response(self.get(path, errors=[(500, "Invalid switch or Other exception")]))
         return json.loads(response['MESSAGE'])['fabricName']
 
-    @error_handler("ERROR: get_fabric_details: failed getting fabric details")
-    def get_fabric_details(self, fabric: str):
+    @error_handler("ERROR: get_fabric_id: failed getting fabric ids")
+    def get_fabric_id(self):
         """
         Provide the name of a fabric, details are stored in object variable fabrics. API call returns
         a dictionary similar to the below example.
 
-        {
-          "id": 4,
-          "fabricId": "FABRIC-4",
-          "fabricName": "site-2",
-          "fabricType": "Switch_Fabric",
-          "fabricTypeFriendly": "Switch Fabric",
-          "fabricTechnology": "VXLANFabric",
-          "fabricTechnologyFriendly": "VXLAN Fabric",
-          "provisionMode": "DCNMTopDown",
-          "deviceType": "n9k",
-          "replicationMode": "Multicast",
-          "asn": "65504",
-          "siteId": "65504",
-          "templateName": "Easy_Fabric_11_1",
-          "nvPairs": {
-            "TE_INTERNET_VRF": "",
-            "MSO_SITE_ID": "",
-            "PHANTOM_RP_LB_ID1": "",
-            "PHANTOM_RP_LB_ID2": "",
-            "PHANTOM_RP_LB_ID3": "",
-            "IBGP_PEER_TEMPLATE": "",
-            "PHANTOM_RP_LB_ID4": "",
-            "abstract_ospf": "base_ospf",
-            "FEATURE_PTP": "false",
-            "L3_PARTITION_ID_RANGE": "50000-59000",
-            "DHCP_START_INTERNAL": "",
-            "SSPINE_COUNT": "0",
-            "ADVERTISE_PIP_BGP": "true",
-            "BFD_PIM_ENABLE": "true",
-            "FABRIC_VPC_QOS_POLICY_NAME": "spine_qos_for_fabric_vpc_peering",
-            "DHCP_END": "",
-            "UNDERLAY_IS_V6": "false",
-            "FABRIC_VPC_DOMAIN_ID": "1",
-            "FABRIC_MTU_PREV": "9216",
-            "BFD_ISIS_ENABLE": "false",
-            "HD_TIME": "180",
-            "OSPF_AUTH_ENABLE": "true",
-            "LOOPBACK1_IPV6_RANGE": "",
-            "ROUTER_ID_RANGE": "",
-            "ENABLE_MACSEC": "false",
-            "MSO_CONNECTIVITY_DEPLOYED": "",
-            "DEAFULT_QUEUING_POLICY_OTHER": "queuing_policy_default_other",
-            "MACSEC_REPORT_TIMER": "",
-            "PREMSO_PARENT_FABRIC": "",
-            "PTP_DOMAIN_ID": "",
-            "USE_LINK_LOCAL": "true",
-            "AUTO_SYMMETRIC_VRF_LITE": "false",
-            "ENABLE_PBR": "false",
-            "BSTRAP_ONLY_IMG_CMPL": "false",
-            "DCI_SUBNET_TARGET_MASK": "31",
-            "VPC_PEER_LINK_PO": "500",
-            "TE_DNS_SERVER_IP_LIST": "",
-            "ISIS_AUTH_ENABLE": "false",
-            "REPLICATION_MODE": "Multicast",
-            "ANYCAST_RP_IP_RANGE": "10.254.254.0/31",
-            "VPC_ENABLE_IPv6_ND_SYNC": "true",
-            "TCAM_ALLOCATION": "true",
-            "abstract_isis_interface": "isis_interface",
-            "SERVICE_NETWORK_VLAN_RANGE": "3000-3199",
-            "MACSEC_ALGORITHM": "",
-            "ISIS_LEVEL": "level-2",
-            "SUBNET_TARGET_MASK": "31",
-            "abstract_anycast_rp": "anycast_rp",
-            "DEAFULT_QUEUING_POLICY_R_SERIES": "queuing_policy_default_r_series",
-            "TE_DNS_DOMAIN": "",
-            "BROWNFIELD_NETWORK_NAME_FORMAT": "Auto_Net_VNI$$VNI$$_VLAN$$VLAN_ID$$",
-            "temp_vpc_peer_link": "int_vpc_peer_link_po_11_1",
-            "ENABLE_FABRIC_VPC_DOMAIN_ID": "true",
-            "IBGP_PEER_TEMPLATE_LEAF": "",
-            "DCI_SUBNET_RANGE": "10.33.0.0/16",
-            "ENABLE_NXAPI": "true",
-            "VRF_LITE_AUTOCONFIG": "Back2Back&ToExternal",
-            "MGMT_GW_INTERNAL": "",
-            "GRFIELD_DEBUG_FLAG": "Disable",
-            "VRF_VLAN_RANGE": "2000-2299",
-            "ISIS_AUTH_KEYCHAIN_NAME": "",
-            "SSPINE_ADD_DEL_DEBUG_FLAG": "Disable",
-            "abstract_bgp_neighbor": "evpn_bgp_rr_neighbor",
-            "OSPF_AUTH_KEY_ID": "127",
-            "PIM_HELLO_AUTH_ENABLE": "false",
-            "abstract_feature_leaf": "base_feature_leaf_upg",
-            "BFD_AUTH_ENABLE": "false",
-            "BGP_LB_ID": "0",
-            "LOOPBACK1_IP_RANGE": "10.23.0.0/22",
-            "AAA_SERVER_CONF": "feature tacacs+\ntacacs-server timeout 3\ntacacs-server host 172.31.7.251 key 7 \"F1whg.321\" timeout 10\ntacacs-server host 172.31.7.250 key 7 \"F1whg.321\" timeout 10\ntacacs-server host 172.31.7.248 key 7 \"F1whg.321\" timeout 10\ntacacs-server host 2001:172:31:7::251 key 7 \"F1whg.321\" timeout 10\ntacacs-server host 2001:172:31:7::250 key 7 \"F1whg.321\" timeout 10\ntacacs-server host 2001:172:31:7::248 key 7 \"F1whg.321\" timeout 10\naaa group server tacacs+ wells\n    server 172.31.7.251\n    server 2001:172:31:7::251\n    server 172.31.7.250\n    server 2001:172:31:7::250\n    server 172.31.7.248\n    server 2001:172:31:7::248\n    deadtime 3\n    use-vrf management\naaa authentication login default group wells \naaa authentication login console local \naaa authorization config-commands default group wells local \naaa authorization commands default group wells local \naaa accounting default group wells\ntacacs-server directed-request\nsystem login block-for 45 attempts 3 within 60",
-            "VPC_PEER_KEEP_ALIVE_OPTION": "management",
-            "enableRealTimeBackup": "true",
-            "TE_PROXY_ENABLE": "",
-            "V6_SUBNET_TARGET_MASK": "126",
-            "STRICT_CC_MODE": "true",
-            "VPC_PEER_LINK_VLAN": "3600",
-            "abstract_trunk_host": "int_trunk_host_11_1",
-            "BGP_AUTH_ENABLE": "true",
-            "RP_MODE": "asm",
-            "enableScheduledBackup": "true",
-            "BFD_OSPF_ENABLE": "true",
-            "abstract_ospf_interface": "ospf_interface_11_1",
-            "MACSEC_FALLBACK_ALGORITHM": "",
-            "TE_ENABLE": "false",
-            "LOOPBACK0_IP_RANGE": "10.22.0.0/22",
-            "ENABLE_AAA": "true",
-            "DEPLOYMENT_FREEZE": "false",
-            "L2_HOST_INTF_MTU_PREV": "9216",
-            "NTP_SERVER_IP_LIST": "",
-            "ENABLE_AGENT": "false",
-            "MACSEC_FALLBACK_KEY_STRING": "",
-            "FF": "Easy_Fabric",
-            "FABRIC_TYPE": "Switch_Fabric",
-            "SPINE_COUNT": "0",
-            "abstract_extra_config_bootstrap": "extra_config_bootstrap_11_1",
-            "MPLS_LOOPBACK_IP_RANGE": "",
-            "LINK_STATE_ROUTING_TAG_PREV": "UNDERLAY",
-            "DHCP_ENABLE": "false",
-            "BFD_AUTH_KEY_ID": "",
-            "MSO_SITE_GROUP_NAME": "",
-            "MGMT_PREFIX_INTERNAL": "",
-            "DHCP_IPV6_ENABLE_INTERNAL": "",
-            "BGP_AUTH_KEY_TYPE": "3",
-            "SITE_ID": "65504",
-            "temp_anycast_gateway": "anycast_gateway",
-            "BRFIELD_DEBUG_FLAG": "Disable",
-            "BGP_AS": "65504",
-            "BOOTSTRAP_MULTISUBNET": "",
-            "ISIS_P2P_ENABLE": "",
-            "ENABLE_NGOAM": "true",
-            "CDP_ENABLE": "false",
-            "TE_PROXY_IP": "",
-            "PTP_LB_ID": "",
-            "DHCP_IPV6_ENABLE": "DHCPv4",
-            "MACSEC_KEY_STRING": "",
-            "OSPF_AUTH_KEY": "a667d47acc18ea6b",
-            "ENABLE_FABRIC_VPC_DOMAIN_ID_PREV": "true",
-            "EXTRA_CONF_LEAF": "snmp-server community wellsrw group network-admin\nsnmp-server community WellsRO group network-operator\nsnmp-server community WellsRW group network-admin\nsnmp-server community wellsro group network-operator\nsnmp-server community WellsRO use-ipv4acl SSH-VTY-RESTRICT use-ipv6acl SSH-VTY-IPv6\nsnmp-server community WellsRW use-ipv4acl SSH-VTY-RESTRICT use-ipv6acl SSH-VTY-IPv6\nsnmp-server community wellsro use-ipv4acl SSH-VTY-RESTRICT use-ipv6acl SSH-VTY-IPv6\nsnmp-server community wellsrw use-ipv4acl SSH-VTY-RESTRICT use-ipv6acl SSH-VTY-IPv6\nlogging timestamp milliseconds\nline vty\n  exec-timeout 240\n  access-class SSH-VTY-RESTRICT in\n  ipv6 access-class SSH-VTY-IPv6 in",
-            "vrf_extension_template": "Default_VRF_Extension_Universal",
-            "DHCP_START": "",
-            "ENABLE_TRM": "false",
-            "FEATURE_PTP_INTERNAL": "false",
-            "ENABLE_NXAPI_HTTP": "false",
-            "MPLS_LB_ID": "",
-            "abstract_isis": "base_isis_level2",
-            "FABRIC_VPC_DOMAIN_ID_PREV": "1",
-            "ROUTE_MAP_SEQUENCE_NUMBER_RANGE": "1-65534",
-            "NETWORK_VLAN_RANGE": "2300-2999",
-            "STATIC_UNDERLAY_IP_ALLOC": "false",
-            "MGMT_V6PREFIX_INTERNAL": "",
-            "MPLS_HANDOFF": "false",
-            "scheduledTime": "01:30",
-            "TE_NTP_SERVER_IP_LIST": "",
-            "ANYCAST_LB_ID": "",
-            "MACSEC_CIPHER_SUITE": "",
-            "MSO_CONTROLER_ID": "",
-            "POWER_REDUNDANCY_MODE": "combined",
-            "BFD_ENABLE": "true",
-            "abstract_extra_config_leaf": "extra_config_leaf",
-            "ANYCAST_GW_MAC": "4000.0000.00aa",
-            "abstract_dhcp": "base_dhcp",
-            "EXTRA_CONF_SPINE": "snmp-server community wellsrw group network-admin\nsnmp-server community WellsRO group network-operator\nsnmp-server community WellsRW group network-admin\nsnmp-server community wellsro group network-operator\nsnmp-server community WellsRO use-ipv4acl SSH-VTY-RESTRICT use-ipv6acl SSH-VTY-IPv6\nsnmp-server community WellsRW use-ipv4acl SSH-VTY-RESTRICT use-ipv6acl SSH-VTY-IPv6\nsnmp-server community wellsro use-ipv4acl SSH-VTY-RESTRICT use-ipv6acl SSH-VTY-IPv6\nsnmp-server community wellsrw use-ipv4acl SSH-VTY-RESTRICT use-ipv6acl SSH-VTY-IPv6\nlogging timestamp milliseconds\nline vty\n  exec-timeout 240\n  access-class SSH-VTY-RESTRICT in\n  ipv6 access-class SSH-VTY-IPv6 in",
-            "NTP_SERVER_VRF": "",
-            "LINK_STATE_ROUTING_TAG": "UNDERLAY",
-            "RP_LB_ID": "254",
-            "BOOTSTRAP_CONF": "ntp server 172.31.7.53 prefer use-vrf management key 1\nntp server 2001:172:31:7::53 prefer use-vrf management key 1\nntp source-interface mgmt0\nntp authenticate\nntp authentication-key 1 md5 fewhg 7\nntp trusted-key 1\nno hardware access-list update atomic\nssh key rsa 2048 force\nip domain-name wellsfargo.svs.cisco.com",
-            "LINK_STATE_ROUTING": "ospf",
-            "ISIS_AUTH_KEY": "",
-            "network_extension_template": "Default_Network_Extension_Universal",
-            "DNS_SERVER_IP_LIST": "172.31.7.55,172.31.7.51,2001:172:31:7::55,2001:172:31:7::51",
-            "ENABLE_EVPN": "true",
-            "abstract_multicast": "base_multicast_11_1",
-            "VPC_DELAY_RESTORE_TIME": "60",
-            "BFD_AUTH_KEY": "",
-            "AGENT_INTF": "eth0",
-            "FABRIC_MTU": "9216",
-            "L3VNI_MCAST_GROUP": "",
-            "VPC_DOMAIN_ID_RANGE": "1-1000",
-            "BFD_IBGP_ENABLE": "true",
-            "VPC_AUTO_RECOVERY_TIME": "360",
-            "DNS_SERVER_VRF": "management",
-            "SYSLOG_SEV": "5",
-            "abstract_loopback_interface": "int_fabric_loopback_11_1",
-            "SYSLOG_SERVER_VRF": "management",
-            "EXTRA_CONF_INTRA_LINKS": "service-policy type qos input QOS-IN no-stats",
-            "SNMP_SERVER_HOST_TRAP": "true",
-            "PIM_HELLO_AUTH_KEY": "",
-            "abstract_extra_config_spine": "extra_config_spine",
-            "TE_ACCOUNT_TOKEN": "",
-            "temp_vpc_domain_mgmt": "vpc_domain_mgmt",
-            "V6_SUBNET_RANGE": "",
-            "SUBINTERFACE_RANGE": "2-511",
-            "BGP_AUTH_KEY": "a667d47acc18ea6b",
-            "abstract_routed_host": "int_routed_host_11_1",
-            "default_network": "Default_Network_Universal",
-            "ISIS_AUTH_KEYCHAIN_KEY_ID": "",
-            "MGMT_V6PREFIX": "",
-            "abstract_feature_spine": "base_feature_spine_upg",
-            "ENABLE_DEFAULT_QUEUING_POLICY": "true",
-            "RP_COUNT": "2",
-            "abstract_vlan_interface": "int_fabric_vlan_11_1",
-            "FABRIC_NAME": "site-2",
-            "abstract_pim_interface": "pim_interface",
-            "LOOPBACK0_IPV6_RANGE": "",
-            "NVE_LB_ID": "1",
-            "VPC_DELAY_RESTORE": "150",
-            "TE_PROXY_BYPASS": "",
-            "ENABLE_VPC_PEER_LINK_NATIVE_VLAN": "true",
-            "L2_HOST_INTF_MTU": "9216",
-            "abstract_route_map": "route_map",
-            "abstract_vpc_domain": "base_vpc_domain_11_1",
-            "ACTIVE_MIGRATION": "false",
-            "COPP_POLICY": "strict",
-            "DHCP_END_INTERNAL": "",
-            "BOOTSTRAP_ENABLE": "true",
-            "default_vrf": "Default_VRF_Universal",
-            "OSPF_AREA_ID": "0.0.0.0",
-            "SYSLOG_SERVER_IP_LIST": "172.31.7.77",
-            "software_image": "9.3(9)",
-            "ENABLE_TENANT_DHCP": "true",
-            "ANYCAST_RP_IP_RANGE_INTERNAL": "10.254.254.0/31",
-            "RR_COUNT": "2",
-            "BOOTSTRAP_MULTISUBNET_INTERNAL": "",
-            "MGMT_GW": "",
-            "MGMT_PREFIX": "",
-            "abstract_bgp_rr": "evpn_bgp_rr",
-            "abstract_bgp": "base_bgp",
-            "SUBNET_RANGE": "10.24.0.0/16",
-            "DEAFULT_QUEUING_POLICY_CLOUDSCALE": "WF_QoS_506d",
-            "MULTICAST_GROUP_SUBNET": "239.250.253.0/25",
-            "FABRIC_INTERFACE_TYPE": "unnumbered",
-            "FABRIC_VPC_QOS": "false",
-            "AAA_REMOTE_IP_ENABLED": "true",
-            "L2_SEGMENT_ID_RANGE": "30000-49000"
-          },
-          "vrfTemplate": "Default_VRF_Universal",
-          "networkTemplate": "Default_Network_Universal",
-          "vrfExtensionTemplate": "Default_VRF_Extension_Universal",
-          "networkExtensionTemplate": "Default_Network_Extension_Universal",
-          "createdOn": 1582778773952,
-          "modifiedOn": 1650129264820
-        }
+                [
+            {
+                "fabricId": 16,
+                "fabricName": "site-4",
+                "fabricType": "Switch_Fabric",
+                "fabricState": "member",
+                "fabricParent": "data_center_1",
+                "fabricTechnology": "VXLANFabric"
+            },
+            {
+                "fabricId": 18,
+                "fabricName": "site-3",
+                "fabricType": "Switch_Fabric",
+                "fabricState": "member",
+                "fabricParent": "data_center_1",
+                "fabricTechnology": "VXLANFabric"
+            },
+            {
+                "fabricId": 19,
+                "fabricName": "data_center_1",
+                "fabricType": "MSD",
+                "fabricState": "msd",
+                "fabricParent": "None",
+                "fabricTechnology": "VXLANFabric"
+            },
+            {
+                "fabricId": 4,
+                "fabricName": "site-2",
+                "fabricType": "Switch_Fabric",
+                "fabricState": "member",
+                "fabricParent": "data_center_1",
+                "fabricTechnology": "VXLANFabric"
+            },
+            {
+                "fabricId": 20,
+                "fabricName": "test",
+                "fabricType": "External",
+                "fabricState": "standalone",
+                "fabricParent": "None",
+                "fabricTechnology": "External"
+            },
+            {
+                "fabricId": 21,
+                "fabricName": "TestLanFabric",
+                "fabricType": "External",
+                "fabricState": "standalone",
+                "fabricParent": "None",
+                "fabricTechnology": "LANClassic"
+            }
+        ]
         """
 
-        path = f'/control/fabrics/{fabric}'
+        path = f'/control/fabrics/msd/fabric-associations'
 
-        logger.info("get_fabric_details: getting fabric details for: {}".format(fabric))
+        logger.info("get_fabric_details: getting fabric ids for")
         response = self._check_response(self.get(path))
 
-        self.fabrics[fabric] = json.loads(response['MESSAGE'])
+
+        for fabric in json.loads(response['MESSAGE']):
+            self.fabrics[fabric['fabricName']] = fabric
 
     def post_new_policy(self, details: str) -> bool:
         """
@@ -1266,14 +1127,14 @@ class DcnmInterfaces(HttpApi):
                                            "CREATION OF POLICY", details)
         return info
 
-    def get_switches_status(self, serial_numbers: Optional[Union[str, list[str]]]) -> dict[str, str]:
+    def get_switches_status(self, serial_numbers: Optional[Union[str, list[str]]]=None) -> dict[str, str]:
         local_status: dict[str, list] = {}
         result_status: dict[str, str] = {}
         if serial_numbers:
             if isinstance(serial_numbers, str):
                 serial_numbers = [serial_numbers]
         else:
-            if self.all_leaf_switches and self.all_notleaf_switches:
+            if self.all_leaf_switches or self.all_notleaf_switches:
                 serial_numbers = list(self.all_leaf_switches.keys()) + list(self.all_notleaf_switches.keys())
             else:
                 logger.critical(
@@ -1289,8 +1150,8 @@ class DcnmInterfaces(HttpApi):
             if fabric in local_status:
                 continue
             if fabric not in self.fabrics:
-                self.get_fabric_details(fabric)
-            fabric_id: str = self.fabrics[fabric]['id']
+                self.get_fabric_id()
+            fabric_id: str = self.fabrics[fabric]["fabricId"]
             path = f'/control/status?entityTypeFilter=SWITCH&fabricId={fabric_id}'
             response = self.get(path)
             logger.debug("get_switches_status: response: {}".format(response))
@@ -1757,16 +1618,16 @@ def get_orphanport_change(interface: tuple, detail: dict) -> bool:
     if 'mgmt' not in interface[0] and ('int_trunk_host' in detail['policy'] or 'int_access_host' in detail[
         'policy']) and 'vpc orphan-port enable' not in detail['interfaces'][0]['nvPairs']['CONF']:
         if not detail['interfaces'][0]['nvPairs']['CONF']:
-            detail['interfaces'][0]['nvPairs']['CONF'] = 'vpc orphan-port enable'
-            logger.debug("interface: {}, changing orphan port enable".format(interface))
+            detail['interfaces'][0]['nvPairs']['CONF'] = 'vpc orphan-port suspend'
+            logger.debug("interface: {}, changing orphan port suspend".format(interface))
             logger.debug("orphan port CONF: {}".format(detail['interfaces'][0]['nvPairs']['CONF']))
             return True
         else:
             # print(interface, detail)
             detail['interfaces'][0]['nvPairs']['CONF'] = '{}\n{}'.format(
                 detail['interfaces'][0]['nvPairs']['CONF'],
-                'vpc orphan-port enable')
-            logger.debug("interface: {}, changing orphan port enable".format(interface))
+                'vpc orphan-port suspend')
+            logger.debug("interface: {}, changing orphan port suspend".format(interface))
             logger.debug("orphan port multiple CONF: {}".format(detail['interfaces'][0]['nvPairs']['CONF']))
             return True
     return False
@@ -1857,21 +1718,51 @@ def deploy_to_fabric_using_interface_deploy(dcnm: DcnmInterfaces, deploy,
     print('=' * 40)
 
 
-def deploy_to_fabric_using_switch_deploy(dcnm: DcnmInterfaces, serial_number: str,
+def deploy_to_fabric_using_switch_deploy(dcnm: DcnmInterfaces, serial_numbers: Optional[Union[str, list]],
                                          deploy_timeout: int = 300,
                                          verbose: bool = True):
+    deployed: set = set()
+    logger.info("Deploying changes to switches")
     if verbose:
-        _dbg('Deploying changes to switches')
-    tic = perf_counter()
-    if dcnm.deploy_switch_config(serial_number):
-        toc = perf_counter()
-        _dbg(f"Deployed in {toc - tic:0.4f} seconds")
-        logger.debug('successfully deployed config to switch {}'.format(serial_number))
+        _dbg('Deploying changes to switches', serial_numbers)
+    if isinstance(serial_numbers, str): serial_numbers = [serial_numbers]
+    if serial_numbers is None:
+        if not (dcnm.all_leaf_switches or dcnm.all_notleaf_switches):
+            raise DCNMPolicyDeployError("serial numbers must be either a string or a list\n"
+                                    "alternatively, the get_all_switches or get_switches_by_serial_number\n"
+                                    "must be called before using this function")
+        else:
+            serial_numbers = list(dcnm.all_leaf_switches.keys()) + list(dcnm.all_notleaf_switches.keys())
+    logger.debug("deploy_to_fabric_using_switch_deploy: deploying: serial numbers: {}".format(serial_numbers))
+    reduced_serial_numbers = serial_numbers.copy()
+    if len(reduced_serial_numbers) > 1:
+        if not dcnm.all_switches_vpc_pairs:
+            dcnm.get_switches_vpc_pairs()
+    for serial_number in reduced_serial_numbers:
+        if serial_number in deployed:
+            continue
+        if dcnm.deploy_switch_config(serial_number):
+            logger.debug('deploy returned successfully')
+            if verbose: _dbg('deploy returned successfully for: ', serial_number)
+        else:
+            _failed_dbg("Failed deploying config to switch {}".format(serial_number),
+                        ("Failed deploying configs to the following switch:", serial_number))
+        deployed.add(serial_number)
+        if len(reduced_serial_numbers) > 1 and serial_number in dcnm.all_switches_vpc_pairs \
+                and dcnm.all_switches_vpc_pairs[serial_number] is not None:
+                deployed.add(dcnm.all_switches_vpc_pairs[serial_number])
+    logger.debug("Deployed or attemped to deploy the following: {}".format(deployed))
+    if verbose: _dbg("Deployed or attemped to deploy the following: ", deployed)
+    logger.info('waiting for switches status')
+    if verbose: _dbg('waiting for switches status')
+    result = dcnm.wait_for_switches_status(serial_numbers=serial_numbers, timeout=deploy_timeout)
+    if isinstance(result, bool):
+        logger.debug('successfully deployed config to switch {}'.format(serial_numbers))
         if verbose:
-            _dbg('!!Successfully Deployed Config Changes to Switches!!', serial_number)
+            _dbg('!!Successfully Deployed Config Changes to Switches!!', serial_numbers)
     else:
-        _failed_dbg("Failed deploying to config to switch {}".format(serial_number),
-                    ("Failed deploying configs to the following switches:", serial_number))
+        _failed_dbg("Failed deploying configs to the following switches {}".format(result),
+                    ("Failed deploying configs to the following switches:", result))
     print()
     print('=' * 40)
     print('=' * 40)
