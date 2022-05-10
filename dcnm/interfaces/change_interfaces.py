@@ -6,9 +6,10 @@ from pickle import dump, load
 from time import strftime, gmtime
 from typing import Union, Optional
 
-from dcnm_interfaces import DcnmInterfaces, read_existing_descriptions, get_desc_change, get_cdp_change, \
-    get_orphanport_change, get_interfaces_to_change, push_to_dcnm, deploy_to_fabric_using_interface_deploy, \
-    verify_interface_change, _dbg, deploy_to_fabric_using_switch_deploy
+from dcnm_interfaces import DcnmInterfaces
+
+from interfaces_utilities import read_existing_descriptions, get_interfaces_to_change, push_to_dcnm, \
+    deploy_to_fabric_using_interface_deploy, verify_interface_change, _dbg, deploy_to_fabric_using_switch_deploy
 
 
 def command_args() -> argparse.Namespace:
@@ -127,6 +128,99 @@ class DCNMValueError(Exception):
     pass
 
 
+def get_desc_changes(dcnm: DcnmInterfaces, pickle: str, excel: Optional[str] = None,
+                     verbose: bool = True):
+    if not excel:
+        dcnm.get_switches_policies(templateName='switch_freeform\Z',
+                                   config=r"interface\s+[a-zA-Z]+\d+/?\d*\n\s+[Dd]escription\s+")
+        existing_descriptions_from_policies: list = DcnmInterfaces.get_info_from_policies_config(
+            dcnm.all_switches_policies,
+            r"interface\s+([a-zA-Z]+\d+/?\d*)\n\s+[dD]escription\s+(.*)")
+        if verbose:
+            _dbg("switch policies", dcnm.all_switches_policies)
+            _dbg("existing description from policies", existing_descriptions_from_policies)
+        policy_ids: list = list({c.policyId for c in existing_descriptions_from_policies})
+        if verbose: _dbg("deleting policy ids", policy_ids)
+        # delete the policy
+        dcnm.delete_switch_policies(list(policy_ids))
+        existing_descriptions: dict[tuple, str] = {k: v for c in existing_descriptions_from_policies for k, v in
+                                                   c.info.items()}
+        if verbose: _dbg("existing descriptions from switch policies", existing_descriptions)
+        with open(pickle, 'wb') as f:
+            dump(dcnm.all_switches_policies, f)
+    else:
+        existing_descriptions = read_existing_descriptions(excel)
+        if verbose: _dbg("existing descriptions from file", existing_descriptions)
+
+    def descriptions(interface: tuple, detail: dict) -> bool:
+        logger.debug("start get_desc_change: interface {}".format(interface))
+        logger.debug("detail: {}".format(detail))
+        # if it's not a vpc (e.g. vpc1) interface and the description is not already the desired description
+        if interface in existing_descriptions and 'vpc' not in interface[0].lower() and \
+                detail['interfaces'][0]['nvPairs']['DESC'] != existing_descriptions[interface]:
+            logger.debug("interface: {}, new description: {}, old description: {}".format(interface,
+                                                                                          existing_descriptions[
+                                                                                              interface],
+                                                                                          detail['interfaces'][0][
+                                                                                              'nvPairs']['DESC']))
+            detail['interfaces'][0]['nvPairs']['DESC'] = existing_descriptions[interface]
+            return True
+        return False
+
+    return descriptions
+
+
+def get_cdp_change(interface: tuple, detail: dict, mgmt: bool = True) -> bool:
+    logger.debug("start get_cdp_change: interface {}".format(interface))
+    logger.debug("detail: {}".format(detail))
+    # if the mgmt flag is set and it's a mgmt interface and cdp is enabled
+    if mgmt and 'mgmt' in interface[0] and detail['interfaces'][0]['nvPairs']['CDP_ENABLE'] == 'true':
+        detail['interfaces'][0]['nvPairs']['CDP_ENABLE'] = 'false'
+        logger.debug("interface: {}, changing cdp".format(interface))
+        logger.debug("CDP_ENABLE: {}".format(detail['interfaces'][0]['nvPairs']['CDP_ENABLE']))
+        return True
+    # it it's a leaf switch and and ethernet interface and not a fabric interface and cdp is enabled
+    elif interface[1] in dcnm.all_leaf_switches and 'ethernet' in interface[0].lower() \
+            and 'fabric' not in detail['policy'] \
+            and 'no cdp enable' not in detail['interfaces'][0]['nvPairs']['CONF']:
+        if not detail['interfaces'][0]['nvPairs']['CONF']:
+            detail['interfaces'][0]['nvPairs']['CONF'] = 'no cdp enable'
+            logger.debug("interface: {}, changing cdp".format(interface))
+            logger.debug("CONF: {}".format(detail['interfaces'][0]['nvPairs']['CONF']))
+            return True
+        else:
+            # print(interface, detail)
+            detail['interfaces'][0]['nvPairs']['CONF'] = '{}\n{}'.format(
+                detail['interfaces'][0]['nvPairs']['CONF'],
+                'no cdp enable')
+            logger.debug("interface: {}, changing cdp".format(interface))
+            logger.debug("multiple CONF: {}".format(detail['interfaces'][0]['nvPairs']['CONF']))
+            return True
+    return False
+
+
+def get_orphanport_change(interface: tuple, detail: dict) -> bool:
+    logger.debug("start get_orphanport_change: interface {}".format(interface))
+    logger.debug("detail: {}".format(detail))
+    # if not a mgmt interface and either a trunk host or access_host interface
+    if 'mgmt' not in interface[0] and ('int_trunk_host' in detail['policy'] or 'int_access_host' in detail[
+        'policy']) and 'vpc orphan-port enable' not in detail['interfaces'][0]['nvPairs']['CONF']:
+        if not detail['interfaces'][0]['nvPairs']['CONF']:
+            detail['interfaces'][0]['nvPairs']['CONF'] = 'vpc orphan-port suspend'
+            logger.debug("interface: {}, changing orphan port suspend".format(interface))
+            logger.debug("orphan port CONF: {}".format(detail['interfaces'][0]['nvPairs']['CONF']))
+            return True
+        else:
+            # print(interface, detail)
+            detail['interfaces'][0]['nvPairs']['CONF'] = '{}\n{}'.format(
+                detail['interfaces'][0]['nvPairs']['CONF'],
+                'vpc orphan-port suspend')
+            logger.debug("interface: {}, changing orphan port suspend".format(interface))
+            logger.debug("orphan port multiple CONF: {}".format(detail['interfaces'][0]['nvPairs']['CONF']))
+            return True
+    return False
+
+
 def _normal_deploy(args: argparse.Namespace, dcnm: DcnmInterfaces):
     """
 
@@ -144,7 +238,7 @@ def _normal_deploy(args: argparse.Namespace, dcnm: DcnmInterfaces):
     serials = _get_serial_numbers(args)
     # get interface info for these serial numbers
     dcnm.get_interfaces_nvpairs(serial_numbers=serials)
-    #if args.verbose: _dbg("interfaces details and nvpairs", dcnm.all_interfaces_nvpairs)
+    # if args.verbose: _dbg("interfaces details and nvpairs", dcnm.all_interfaces_nvpairs)
     # get role and fabric info for these serial numbers
     if args.all:
         dcnm.get_all_switches()
@@ -157,30 +251,8 @@ def _normal_deploy(args: argparse.Namespace, dcnm: DcnmInterfaces):
     changes_to_make: list[tuple] = []
     if args.description:
         _dbg("Adding Description Changes")
-        existing_descriptions: dict = {}
-        if not args.excel:
-            dcnm.get_switches_policies(templateName='switch_freeform\Z',
-                                       config=r"interface\s+[a-zA-Z]+\d+/?\d*\n\s+[Dd]escription\s+")
-            existing_descriptions_from_policies: list = DcnmInterfaces.get_info_from_policies_config(
-                dcnm.all_switches_policies,
-                r"interface\s+([a-zA-Z]+\d+/?\d*)\n\s+[dD]escription\s+(.*)")
-            if args.verbose:
-                _dbg("switch policies", dcnm.all_switches_policies)
-                _dbg("existing description from policies", existing_descriptions_from_policies)
-            policy_ids: list = list({c.policyId for c in existing_descriptions_from_policies})
-            if args.verbose: _dbg("deleting policy ids", policy_ids)
-            # delete the policy
-            dcnm.delete_switch_policies(list(policy_ids))
-            existing_descriptions: dict[tuple, str] = {k: v for c in existing_descriptions_from_policies for k, v in
-                                                       c.info.items()}
-            if args.verbose: _dbg("existing descriptions from switch policies", existing_descriptions)
-            with open(args.pickle, 'wb') as f:
-                dump(dcnm.all_switches_policies, f)
-        else:
-            existing_descriptions = read_existing_descriptions(args.excel)
-            if args.verbose: _dbg("existing descriptions from file", existing_descriptions)
         changes_to_make.append(
-            (get_desc_change, {'existing_descriptions': existing_descriptions}, False))
+            (get_desc_changes(dcnm, args.pickle, excel=args.excel, verbose=args.verbose), None, False))
     if args.cdp:
         _dbg("Adding Disabling of CDP")
         changes_to_make.append((get_cdp_change, {'mgmt': args.mgmt}, False))
@@ -202,8 +274,8 @@ def _deploy_stub(args: argparse.Namespace, dcnm: DcnmInterfaces, interfaces_will
         deploy_to_fabric_using_switch_deploy(dcnm, serials, deploy_timeout=args.timeout, verbose=args.verbose)
     else:
         deploy_to_fabric_using_interface_deploy(dcnm, success, policies=policy_ids, deploy_timeout=args.timeout,
-                                            fallback=args.backout,
-                                            verbose=args.verbose)
+                                                fallback=args.backout,
+                                                verbose=args.verbose)
     # Verify
     verify_interface_change(dcnm, interfaces_will_change, serial_numbers=serials, verbose=args.verbose)
 

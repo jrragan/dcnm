@@ -12,28 +12,16 @@ from datetime import timedelta
 from itertools import cycle
 from pickle import dump, load
 from pprint import pprint
-from time import sleep, time, perf_counter
-from typing import Union, Optional, Callable, Any
+from time import sleep, time
+from typing import Union, Optional, Any
 
-import pandas
-from colorama import init, Back, Fore, Style
-from pandas import read_excel
-from yaspin import yaspin
-
+from DCNM_errors import DCNMServerResponseError, DCNMInterfacesParameterError, \
+    DCNMSwitchesPoliciesParameterError, DCNMParamaterError, DCNMSwitchesSwitchesParameterError, DCNMPolicyDeployError, \
+    DCNMSwitchStatusParameterError, DCNMSwitchStatusError
 from dcnm_connect import HttpApi
 
 logger = logging.getLogger('dcnm_interfaces')
 
-def _dbg(header: str, data=None):
-    """ Output verbose data """
-
-    print("=" * 60)
-    print(header)
-    print("=" * 60)
-    if data:
-        pprint(data)
-        print("=" * 60)
-    print()
 
 def error_handler(msg):
     def decorator(func):
@@ -56,6 +44,7 @@ def error_handler(msg):
 
     return decorator
 
+
 def _spin(msg, start, frames, _stop_spin):
     while not _stop_spin.is_set():
         frame = next(frames)
@@ -63,6 +52,7 @@ def _spin(msg, start, frames, _stop_spin):
         frame += "  ({} : {}.{:02.0f})".format(msg, timedelta(seconds=sec), fsec)
         print('\r', frame, sep='', end='', flush=True)
         sleep(0.2)
+
 
 def spinner(msg="Elapsed Time"):
     def decorator(func):
@@ -88,49 +78,23 @@ def spinner(msg="Elapsed Time"):
                     _stop_spin.set()
                     _spin_thread.join()
                 print()
-                _dbg("Elapsed Time: ", stop - start)
+                print("=" * 60)
+                print("Elapsed Time: ")
+                print("=" * 60)
+                pprint(stop - start)
+                print("=" * 60)
+                print()
             return value
+
         return wrapper_decrorator
 
     return decorator
-
-
-class DCNMInterfacesParameterError(Exception):
-    pass
-
-
-class DCNMSwitchesPoliciesParameterError(Exception):
-    pass
-
-
-class DCNMParamaterError(Exception):
-    pass
 
 
 @dataclass
 class info_from_policies:
     info: dict
     policyId: str
-
-
-class DCNMSwitchStatusError(Exception):
-    pass
-
-
-class DCNMSwitchStatusParameterError(Exception):
-    pass
-
-
-class DCNMServerResponseError(Exception):
-    pass
-
-
-class DCNMPolicyDeployError(Exception):
-    pass
-
-
-class DCNMSwitchesSwitchesParameterError(Exception):
-    pass
 
 
 class DcnmInterfaces(HttpApi):
@@ -420,7 +384,7 @@ class DcnmInterfaces(HttpApi):
         path = "/interface/vpcpair_serial_number"
         data = self._check_response(dcnm.get(path, errors=[
             (500, "The specified serial number is not part of a vPC pair or any other internal server error.")],
-                        params={'serial_number': serial_number}))
+                                             params={'serial_number': serial_number}))
         if 'vpc_pair_sn' in data["DATA"]:
             return data['DATA']['vpc_pair_sn']
 
@@ -754,7 +718,7 @@ class DcnmInterfaces(HttpApi):
                 f.write(str(self.all_interfaces_nvpairs))
 
     @spinner()
-    def deploy_switch_config(self, serial_number: str, fabric: Optional[str] = None, deploy_timeout: int=300) -> bool:
+    def deploy_switch_config(self, serial_number: str, fabric: Optional[str] = None, deploy_timeout: int = 300) -> bool:
         """
 
         :param serial_number: required, serial number of switch
@@ -914,7 +878,7 @@ class DcnmInterfaces(HttpApi):
         return success, failed
 
     @spinner()
-    def deploy_interfaces(self, payload: Union[list, dict], deploy_timeout: int=300) -> Optional[bool]:
+    def deploy_interfaces(self, payload: Union[list, dict], deploy_timeout: int = 300) -> Optional[bool]:
         """
 
         :param self:
@@ -955,7 +919,7 @@ class DcnmInterfaces(HttpApi):
         return info
 
     @spinner()
-    def deploy_fabric_config(self, fabric: str, deploy_timeout: int=300) -> Optional[bool]:
+    def deploy_fabric_config(self, fabric: str, deploy_timeout: int = 300) -> Optional[bool]:
         """
 
         :param fabric: name of fabric
@@ -976,7 +940,7 @@ class DcnmInterfaces(HttpApi):
         return info
 
     @spinner()
-    def deploy_policies(self, policies: list, deploy_timeout: int=300) -> Optional[bool]:
+    def deploy_policies(self, policies: list, deploy_timeout: int = 300) -> Optional[bool]:
         """
 
         :param policies: list of policies to deploy, Eg :- ["POLICY-1200","POLICY-1220"]
@@ -1076,7 +1040,6 @@ class DcnmInterfaces(HttpApi):
         logger.info("get_fabric_details: getting fabric ids for")
         response = self._check_response(self.get(path))
 
-
         for fabric in json.loads(response['MESSAGE']):
             self.fabrics[fabric['fabricName']] = fabric
 
@@ -1127,7 +1090,7 @@ class DcnmInterfaces(HttpApi):
                                            "CREATION OF POLICY", details)
         return info
 
-    def get_switches_status(self, serial_numbers: Optional[Union[str, list[str]]]=None) -> dict[str, str]:
+    def get_switches_status(self, serial_numbers: Optional[Union[str, list[str]]] = None) -> dict[str, str]:
         local_status: dict[str, list] = {}
         result_status: dict[str, str] = {}
         if serial_numbers:
@@ -1465,325 +1428,6 @@ class DcnmInterfaces(HttpApi):
         return True
 
 
-class ExcelFileError(Exception):
-    pass
-
-
-def read_existing_descriptions(file: str) -> dict[tuple, str]:
-    """
-
-    :param file: an excel file path/name containing columns "interface", "switch" and "description"
-    the switch column is the switch serial number
-    :type file: str
-    :return: dictionary
-    :rtype: dict[tuple, str]
-
-    Read in an excel file and return a dictionary of form {(interface, switch_serial_number): interface_description}
-    """
-    existing_descriptions_local: dict
-    logger.debug("reading excel file {}".format(file))
-    df: pandas.DataFrame = read_excel(file)
-    df.columns = df.columns.str.lower()
-    if 'description' not in df.columns or 'interface' not in df.columns or 'switch' not in df.columns:
-        logger.debug("Columns missing. {}".format(df.columns))
-        raise ExcelFileError('One or more columns missing')
-    existing_descriptions_local = df.to_dict('records')
-    # print(existing_descriptions)
-    existing_descriptions_local = {(interface['interface'], interface['switch']): interface['description'] for interface
-                                   in
-                                   existing_descriptions_local}
-    logger.debug("read_existing_descriptions: existing descriptions: {}".format(existing_descriptions_local))
-    return existing_descriptions_local
-
-
-def get_interfaces_to_change(dcnm: DcnmInterfaces,
-                             change_functions: list[tuple[Callable, Optional[dict], bool]]) -> tuple[
-    dict[tuple, dict], dict[tuple, dict]]:
-    """
-
-    :param dcnm: dcnm object
-    :type dcnm: DcnmInterfaces
-    :param change_functions: a list of tuples with each tuple of the form
-    (a function object to call, an optional dictionary containing args to pass to function, a boolean which is True
-    if the function is to run only on leaf switches)
-    :type change_functions: list[tuple[Callable, Optional[dict], bool]]
-    :return: a tuple of dictionaries
-    :rtype: tuple[dict[tuple, dict], dict[tuple, dict]]
-
-    provide a list of callables to apply
-    the function iterates through the interface tuple and interface policy details of the all_interfaces_nvpairs
-    parameter and provides each of those values along with the optional dictionary of parameters to each callable
-    returns two dictionaries. the first is the interfaces to change along with the changes to make and the other
-    is the original dictionary of policies
-    """
-    existing_interfaces = deepcopy(dcnm.all_interfaces_nvpairs)
-    interfaces_to_change: dict[tuple, dict] = {}
-    interfaces_original: dict[tuple, dict] = {}
-    for interface, details in existing_interfaces.items():
-        change: bool = False
-        # print(details)
-        change = _run_functions(change_functions, details, interface,
-                                leaf=interface[1] in dcnm.all_leaf_switches)
-        if change:
-            interfaces_original[interface] = dcnm.all_interfaces_nvpairs[interface]
-            interfaces_to_change[interface] = details
-    logger.debug("Interfaces to change: {}".format(interfaces_to_change))
-    return interfaces_to_change, interfaces_original
-
-
-def _run_functions(change_functions, details, interface, leaf=True):
-    """
-
-    :param change_functions:
-    :type change_functions:
-    :param details:
-    :type details:
-    :param interface:
-    :type interface:
-    :param leaf:
-    :type leaf:
-    :return:
-    :rtype:
-
-    helper function
-    """
-    change = False
-    for function in change_functions:
-        #if the function is to run only on leaf switches and this is a leaf switch or the function can run on any switch
-        if (function[2] and leaf) or not function[2]:
-            if function[1]:
-                logger.debug("_run_functions: sending {} to function {}".format(interface, function))
-                logger.debug("detail: {}".format(details))
-                logger.debug("{}".format(function[0]))
-                change = function[0](interface, details, **function[1]) or change
-            else:
-                logger.debug("_run_functions: sending {} to function {}".format(interface, function))
-                logger.debug("detail: {}".format(details))
-                logger.debug("{}".format(function[0]))
-                change = function[0](interface, details) or change
-        else:
-            change = change or False
-
-    return change
-
-
-def get_desc_change(interface: tuple, detail: dict, existing_descriptions: dict[tuple, str]) -> bool:
-    logger.debug("start get_desc_change: interface {}".format(interface))
-    logger.debug("detail: {}".format(detail))
-    #if it's not a vpc (e.g. vpc1) interface and the description is not already the desired description
-    if interface in existing_descriptions and 'vpc' not in interface[0].lower() and \
-            detail['interfaces'][0]['nvPairs']['DESC'] != existing_descriptions[interface]:
-        logger.debug("interface: {}, new description: {}, old description: {}".format(interface,
-                                                                                      existing_descriptions[interface],
-                                                                                      detail['interfaces'][0][
-                                                                                          'nvPairs']['DESC']))
-        detail['interfaces'][0]['nvPairs']['DESC'] = existing_descriptions[interface]
-        return True
-    return False
-
-
-def get_cdp_change(interface: tuple, detail: dict, mgmt: bool = True) -> bool:
-    logger.debug("start get_cdp_change: interface {}".format(interface))
-    logger.debug("detail: {}".format(detail))
-    #if the mgmt flag is set and it's a mgmt interface and cdp is enabled
-    if mgmt and 'mgmt' in interface[0] and detail['interfaces'][0]['nvPairs']['CDP_ENABLE'] == 'true':
-        detail['interfaces'][0]['nvPairs']['CDP_ENABLE'] = 'false'
-        logger.debug("interface: {}, changing cdp".format(interface))
-        logger.debug("CDP_ENABLE: {}".format(detail['interfaces'][0]['nvPairs']['CDP_ENABLE']))
-        return True
-    #it it's a leaf switch and and ethernet interface and not a fabric interface and cdp is enabled
-    elif interface[1] in dcnm.all_leaf_switches and 'ethernet' in interface[0].lower() \
-            and 'fabric' not in detail['policy'] \
-            and 'no cdp enable' not in detail['interfaces'][0]['nvPairs']['CONF']:
-        if not detail['interfaces'][0]['nvPairs']['CONF']:
-            detail['interfaces'][0]['nvPairs']['CONF'] = 'no cdp enable'
-            logger.debug("interface: {}, changing cdp".format(interface))
-            logger.debug("CONF: {}".format(detail['interfaces'][0]['nvPairs']['CONF']))
-            return True
-        else:
-            # print(interface, detail)
-            detail['interfaces'][0]['nvPairs']['CONF'] = '{}\n{}'.format(
-                detail['interfaces'][0]['nvPairs']['CONF'],
-                'no cdp enable')
-            logger.debug("interface: {}, changing cdp".format(interface))
-            logger.debug("multiple CONF: {}".format(detail['interfaces'][0]['nvPairs']['CONF']))
-            return True
-    return False
-
-
-def get_orphanport_change(interface: tuple, detail: dict) -> bool:
-    logger.debug("start get_orphanport_change: interface {}".format(interface))
-    logger.debug("detail: {}".format(detail))
-    #if not a mgmt interface and either a trunk host or access_host interface
-    if 'mgmt' not in interface[0] and ('int_trunk_host' in detail['policy'] or 'int_access_host' in detail[
-        'policy']) and 'vpc orphan-port enable' not in detail['interfaces'][0]['nvPairs']['CONF']:
-        if not detail['interfaces'][0]['nvPairs']['CONF']:
-            detail['interfaces'][0]['nvPairs']['CONF'] = 'vpc orphan-port suspend'
-            logger.debug("interface: {}, changing orphan port suspend".format(interface))
-            logger.debug("orphan port CONF: {}".format(detail['interfaces'][0]['nvPairs']['CONF']))
-            return True
-        else:
-            # print(interface, detail)
-            detail['interfaces'][0]['nvPairs']['CONF'] = '{}\n{}'.format(
-                detail['interfaces'][0]['nvPairs']['CONF'],
-                'vpc orphan-port suspend')
-            logger.debug("interface: {}, changing orphan port suspend".format(interface))
-            logger.debug("orphan port multiple CONF: {}".format(detail['interfaces'][0]['nvPairs']['CONF']))
-            return True
-    return False
-
-
-def verify_interface_change(dcnm: DcnmInterfaces, interfaces_will_change: dict, verbose: bool = True, **kwargs):
-    dcnm.get_interfaces_nvpairs(save_prev=True, **kwargs)
-    failed: set = set()
-    success: set = set()
-    if verbose: _dbg("Verifying Interface Configurations")
-    interfaces_will_change_local = deepcopy(interfaces_will_change)
-    all_interfaces_nv_pairs_local = deepcopy(dcnm.all_interfaces_nvpairs)
-    for interface in interfaces_will_change:
-        #priority changes, so remove from comparison
-        interfaces_will_change_local[interface]['interfaces'][0]['nvPairs'].pop('PRIORITY', None)
-        interfaces_will_change_local[interface]['interfaces'][0]['nvPairs'].pop('FABRIC_NAME', None)
-        all_interfaces_nv_pairs_local[interface]['interfaces'][0]['nvPairs'].pop('PRIORITY', None)
-        all_interfaces_nv_pairs_local[interface]['interfaces'][0]['nvPairs'].pop('FABRIC_NAME', None)
-        if interfaces_will_change_local[interface] == all_interfaces_nv_pairs_local[interface]:
-            logger.debug("Verification confirmed for interface {}".format(interface))
-            logger.debug("{}".format(interfaces_will_change[interface]))
-            success.add(interface)
-        else:
-            logger.critical("Verification failed for interface {}".format(interface))
-            logger.critical("Desired configuration: {}".format(interfaces_will_change[interface]))
-            logger.critical("Configuration pulled from DCNM: {}".format(dcnm.all_interfaces_nvpairs[interface]))
-            failed.add(interface)
-    if failed:
-        if failed:
-            _failed_dbg("verify_interface_change:  Failed configuring {}".format(failed),
-                        ("Failed verification config changes to for the following switches:", failed))
-    else:
-        logger.debug("verify_interface_change: No Failures!")
-        if verbose: _dbg("Successfully Verified All Interface Changes! Yay!")
-    # return success, failed
-
-
-def push_to_dcnm(dcnm: DcnmInterfaces, interfaces_to_change: dict, verbose: bool = True) -> set:
-    # make changes
-    success: set
-    failure: set
-    if verbose:
-        _dbg("Putting changes to dcnm")
-    success, failure = dcnm.put_interface_changes(interfaces_to_change)
-    if failure:
-        _failed_dbg("Failed putting to DCNM for the following: {}".format(failure),
-                    ("Failed pushing config changes to DCNM for the following switches:", failure))
-    else:
-        if verbose: _dbg("Successfully Pushed All Configurations!")
-    logger.debug("push_to_dcnm: success: {}".format(success))
-    if verbose: _dbg("Successfully Pushed Following Configs", success)
-    return success
-
-
-def deploy_to_fabric_using_interface_deploy(dcnm: DcnmInterfaces, deploy,
-                                            policies: Optional[Union[list, tuple, str]] = None,
-                                            deploy_timeout: int = 300,
-                                            fallback: bool = False,
-                                            verbose: bool = True):
-    deploy_list: list = DcnmInterfaces.create_deploy_list(deploy)
-    if verbose:
-        _dbg('Deploying changes to switches')
-    if dcnm.deploy_interfaces(deploy_list, deploy_timeout=deploy_timeout):
-        logger.debug('successfully deployed to {}'.format(deploy))
-        if verbose:
-            _dbg('!!Successfully Deployed Config Changes to Switches!!', deploy)
-    else:
-        _failed_dbg("Failed deploying to {}".format(deploy),
-                    ("Failed deploying configs to the following switches:", deploy))
-    print()
-    print('=' * 40)
-    print('=' * 40)
-    if policies and fallback:
-        if isinstance(policies, str):
-            policies = [policies]
-        if verbose: _dbg("DEPLOYING POLICIES: ", policies)
-        if dcnm.deploy_policies(policies, deploy_timeout=deploy_timeout):
-            logger.debug('successfully deployed policies {}'.format(policies))
-            if verbose:
-                _dbg('!!Successfully Deployed Config Policies to Switches!!', policies)
-        else:
-            _failed_dbg("Failed deploying policies {}".format(policies),
-                        ('Failed deploying the following policies:', policies))
-    print()
-    print('=' * 40)
-    print('=' * 40)
-    print("FINISHED DEPLOYING. GO GET A BEER!")
-    print('=' * 40)
-
-
-def deploy_to_fabric_using_switch_deploy(dcnm: DcnmInterfaces, serial_numbers: Optional[Union[str, list]],
-                                         deploy_timeout: int = 300,
-                                         verbose: bool = True):
-    deployed: set = set()
-    logger.info("Deploying changes to switches")
-    if verbose:
-        _dbg('Deploying changes to switches', serial_numbers)
-    if isinstance(serial_numbers, str): serial_numbers = [serial_numbers]
-    if serial_numbers is None:
-        if not (dcnm.all_leaf_switches or dcnm.all_notleaf_switches):
-            raise DCNMPolicyDeployError("serial numbers must be either a string or a list\n"
-                                    "alternatively, the get_all_switches or get_switches_by_serial_number\n"
-                                    "must be called before using this function")
-        else:
-            serial_numbers = list(dcnm.all_leaf_switches.keys()) + list(dcnm.all_notleaf_switches.keys())
-    logger.debug("deploy_to_fabric_using_switch_deploy: deploying: serial numbers: {}".format(serial_numbers))
-    reduced_serial_numbers = serial_numbers.copy()
-    if len(reduced_serial_numbers) > 1:
-        if not dcnm.all_switches_vpc_pairs:
-            dcnm.get_switches_vpc_pairs()
-    for serial_number in reduced_serial_numbers:
-        if serial_number in deployed:
-            continue
-        if dcnm.deploy_switch_config(serial_number):
-            logger.debug('deploy returned successfully')
-            if verbose: _dbg('deploy returned successfully for: ', serial_number)
-        else:
-            _failed_dbg("Failed deploying config to switch {}".format(serial_number),
-                        ("Failed deploying configs to the following switch:", serial_number))
-        deployed.add(serial_number)
-        if len(reduced_serial_numbers) > 1 and serial_number in dcnm.all_switches_vpc_pairs \
-                and dcnm.all_switches_vpc_pairs[serial_number] is not None:
-                deployed.add(dcnm.all_switches_vpc_pairs[serial_number])
-    logger.debug("Deployed or attemped to deploy the following: {}".format(deployed))
-    if verbose: _dbg("Deployed or attemped to deploy the following: ", deployed)
-    logger.info('waiting for switches status')
-    if verbose: _dbg('waiting for switches status')
-    result = dcnm.wait_for_switches_status(serial_numbers=serial_numbers, timeout=deploy_timeout)
-    if isinstance(result, bool):
-        logger.debug('successfully deployed config to switch {}'.format(serial_numbers))
-        if verbose:
-            _dbg('!!Successfully Deployed Config Changes to Switches!!', serial_numbers)
-    else:
-        _failed_dbg("Failed deploying configs to the following switches {}".format(result),
-                    ("Failed deploying configs to the following switches:", result))
-    print()
-    print('=' * 40)
-    print('=' * 40)
-    print("FINISHED DEPLOYING. GO GET A BEER!")
-    print('=' * 40)
-
-
-def _failed_dbg(log_msg: str, messages: tuple):
-    init()
-    logger.critical(log_msg)
-    print()
-    print()
-    print(Back.BLACK + Fore.RED + '*' * 60)
-    for i in messages:
-        pprint(i)
-    print('*' * 60)
-    print()
-    print()
-    print(Style.RESET_ALL)
-
-
 if __name__ == '__main__':
     SCREENLOGLEVEL = logging.DEBUG
     FILELOGLEVEL = logging.DEBUG
@@ -1842,25 +1486,9 @@ if __name__ == '__main__':
     existing_descriptions: dict[tuple, str] = {k: v for c in existing_descriptions_from_policies for k, v in
                                                c.info.items()}
     pprint(existing_descriptions)
-    interfaces_will_change, interfaces_existing_conf = \
-        get_interfaces_to_change(dcnm, [(get_desc_change, {'existing_descriptions': existing_descriptions}, False),
-                                        (get_cdp_change, {'mgmt': False}, False),
-                                        (get_orphanport_change, None, True)])
 
     print('=' * 40)
     print()
-    with open('interfaces_existing_conf.pickle', 'wb') as f:
-        dump(interfaces_existing_conf, f)
-    with open('interfaces_will_change.json', 'w') as f:
-        f.write(str(interfaces_will_change))
-
-    pprint(interfaces_will_change)
-
-    success = push_to_dcnm(dcnm, interfaces_will_change)
-    deploy_to_fabric_using_interface_deploy(dcnm, success, policies=list(policy_ids))
-
-    # Verify
-    verify_interface_change(dcnm, interfaces_will_change, serial_numbers=['FDO24261WAT', 'FDO242702QK'])
 
     # Fallback
     print()
@@ -1869,7 +1497,6 @@ if __name__ == '__main__':
     with open('interfaces_existing_conf.pickle', 'rb') as f:
         interfaces_existing_conf = load(f)
     pprint(interfaces_existing_conf)
-    success = push_to_dcnm(dcnm, interfaces_existing_conf)
     with open('switches_configuration_policies.pickle', 'rb') as f:
         interface_desc_policies: dict[str, list] = load(f)
     pprint(interface_desc_policies)
@@ -1878,12 +1505,10 @@ if __name__ == '__main__':
         for policy in interface_desc_policies[serial_number]:
             dcnm.post_new_policy(policy)
             policies_ids.append([policy["policyId"]])
-    deploy_to_fabric_using_interface_deploy(dcnm, success, policies=policies_ids)
     print('=' * 40)
     print("FALLBACK")
     print('=' * 40)
     dcnm.wait_for_switches_status(serial_numbers=['FDO24261WAT', 'FDO242702QK'])
-    verify_interface_change(dcnm, interfaces_existing_conf, serial_numbers=['FDO24261WAT', 'FDO242702QK'])
     print('=' * 40)
     print("FINISHED. GO GET PLASTERED!")
     print('=' * 40)
