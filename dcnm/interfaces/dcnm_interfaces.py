@@ -104,7 +104,8 @@ class DcnmInterfaces(HttpApi):
         self.all_switches_vpc_pairs: dict[str, Optional[str]] = {}
         self.all_leaf_switches: dict[str, str] = {}
         self.all_notleaf_switches: dict[str, str] = {}
-        self.all_interfaces: dict[tuple, dict] = {}
+        self.all_interfaces_details: dict[tuple, dict] = {}
+        self.all_interfaces_details_prev: dict[tuple, dict] = {}
         self.all_interfaces_nvpairs: dict[tuple, dict] = {}
         # needed for fallback
         self.all_interfaces_nvpairs_prev: dict[tuple, dict] = {}
@@ -414,7 +415,7 @@ class DcnmInterfaces(HttpApi):
         return info
 
     @error_handler("ERROR: get_all_interfaces_detail: getting interface details for serial number")
-    def get_all_interfaces_detail(self, serial_number: Optional[str] = None, interface: Optional[str] = None):
+    def get_all_interfaces_details(self, serial_number: Optional[str] = None, interface: Optional[str] = None):
         """
 
         :param self:
@@ -439,139 +440,262 @@ class DcnmInterfaces(HttpApi):
         pulls a list of all interfaces from dcnm of the following form. returns a dictionary with a subset of
         values
 
-        [
-        {
-            "name": null,
-            "domainID": 0,
-            "wwn": null,
-            "membership": null,
-            "ports": 0,
-            "model": "N9K-C9336C-FX2",
-            "version": null,
-            "upTime": 35784632,
-            "ipAddress": "10.0.7.32",
-            "mgmtAddress": null,
-            "vendor": "Cisco",
-            "displayHdrs": [
-                "Name",
-                "IP Address",
-                "Fabric",
-                "WWN",
-                "FC Ports",
-                "Vendor",
-                "Model",
-                "Release",
-                "UpTime"
-            ],
-            "displayValues": [
-                "bl4001",
-                "10.0.7.32",
-                "site-2",
-                "FDO22423DNC",
-                "36",
-                "Cisco",
-                "N9K-C9336C-FX2",
-                "9.3(9)",
-                "4 days, 03:24:06"
-            ],
-            "colDBId": 0,
-            "fid": 4,
-            "isLan": false,
-            "isNonNexus": false,
-            "is_smlic_enabled": false,
-            "present": true,
-            "licenseViolation": false,
-            "managable": true,
-            "mds": false,
-            "connUnitStatus": 0,
-            "standbySupState": 0,
-            "activeSupSlot": 0,
-            "unmanagableCause": "",
-            "lastScanTime": 1647617239427,
+                [
+          {
+            "allowAccessAdmin": true,
+            "allowAccessAdminReason": null,
+            "adminStatus": 1,
+            "adminStatusStr": "up",
+            "alias": "",
+            "allowedVLANs": null,
+            "channelId": -1,
+            "channelIfIndex": -1,
+            "complianceStatus": "In-Sync",
+            "deleteReason": null,
+            "description": "mgmt0",
+            "duplex": null,
+            "editBlockReason": null,
+            "entityId": "FDO24261WAT~mgmt0",
             "fabricName": "site-2",
-            "modelType": 0,
-            "logicalName": "bl4001",
-            "switchDbID": 5165810,
-            "uid": 0,
-            "release": "9.3(9)",
-            "location": "",
-            "contact": "",
-            "upTimeStr": "4 days, 03:24:06",
-            "upTimeNumber": 0,
-            "network": "LAN",
-            "nonMdsModel": "N9K-C9336C-FX2",
-            "numberOfPorts": 36,
-            "availPorts": 0,
-            "usedPorts": 0,
-            "vsanWwn": null,
-            "vsanWwnName": null,
-            "swWwn": null,
-            "swWwnName": "FDO22423DNC",
-            "serialNumber": "FDO22423DNC",
-            "domain": null,
-            "principal": null,
-            "status": "ok",
-            "index": 1,
-            "licenseDetail": null,
-            "isPmCollect": false,
-            "sanAnalyticsCapable": false,
-            "vdcId": -1,
-            "vdcName": "",
-            "vdcMac": null,
-            "fcoeEnabled": false,
-            "cpuUsage": 4,
-            "memoryUsage": 28,
-            "scope": null,
-            "fex": false,
-            "health": 98,
-            "npvEnabled": false,
-            "linkName": null,
-            "username": "y9fzO6teTGs8QpyOWpSHn4d7sMNB/My3LI9zRSiTQZm3hQ==",
-            "primaryIP": null,
-            "primarySwitchDbID": 0,
-            "secondaryIP": "",
-            "secondarySwitchDbID": 0,
-            "switchRole": "border",
-            "mode": "Normal",
-            "hostName": "bl4001.wellsfargo.svs.cisco.com",
-            "ipDomain": "wellsfargo.svs.cisco.com",
-            "modules": null,
-            "fexMap": {},
-            "isVpcConfigured": false,
-            "vpcDomain": 0,
-            "role": null,
-            "peer": null,
-            "peerSerialNumber": null,
-            "peerSwitchDbId": 0,
-            "peerlinkState": null,
-            "keepAliveState": null,
-            "consistencyState": false,
-            "sendIntf": null,
-            "recvIntf": null
-        }
-        ]
+            "ifIndex": 83886080,
+            "ifName": "mgmt0",
+            "ifType": "INTERFACE_MGMT",
+            "interfaceDbId": 5169890,
+            "ipAddress": "10.0.7.22/24",
+            "isDeletable": true,
+            "isDiscovered": true,
+            "isFex": "false",
+            "isPhysical": "true",
+            "isRbacAccessible": "true",
+            "mgmtIpAddress": "10.0.7.22",
+            "mode": null,
+            "mtu": 1500,
+            "nativeVlanId": -1,
+            "neighbours": [],
+            "operStatusCause": "ok",
+            "operStatusStr": "up",
+            "overlayNetwork": [],
+            "platform": "N9K",
+            "policyChangeSupported": true,
+            "portChannelMemberList": null,
+            "serialNo": "FDO24261WAT",
+            "speedValue": 1000000000,
+            "switchDbId": 5164810,
+            "sysName": "cl4001",
+            "underlayPolicies": [
+              {
+                "id": 5164430,
+                "policyId": "POLICY-5164430",
+                "templateName": "int_mgmt_11_1",
+                "entityName": "mgmt0",
+                "entityType": "INTERFACE",
+                "status": "NA",
+                "lastModified": 1647552899176,
+                "source": "",
+                "serialNumber": "FDO24261WAT",
+                "policyTag": null,
+                "autoGenerated": true
+              }
+            ],
+            "vdcId": 0,
+            "vdcName": null,
+            "vpcId": 0,
+            "vrf": "management",
+            "priMemberIntfList": null,
+            "secMemberIntfList": null,
+            "blockConfig": false,
+            "underlayPolicySource": "",
+            "underlayPolicyTag": "[interface_edit_policy]",
+            "interfaceGroup": null,
+            "hasDeletedOverlay": false,
+            "externalFabric": false,
+            "discovered": true,
+            "aafexPort": false,
+            "groupAssocSupported": true,
+            "editAllowed": true,
+            "deletable": true,
+            "markDeleted": false
+          },
+          {
+            "allowAccessAdmin": true,
+            "allowAccessAdminReason": null,
+            "adminStatus": 1,
+            "adminStatusStr": "up",
+            "alias": "TEST1",
+            "allowedVLANs": "none",
+            "channelId": -1,
+            "channelIfIndex": -1,
+            "complianceStatus": "In-Sync",
+            "deleteReason": null,
+            "description": "Ethernet1/1",
+            "duplex": null,
+            "editBlockReason": null,
+            "entityId": "FDO24261WAT~Ethernet1/1",
+            "fabricName": "site-2",
+            "ifIndex": 436207616,
+            "ifName": "Ethernet1/1",
+            "ifType": "INTERFACE_ETHERNET",
+            "interfaceDbId": 5169940,
+            "ipAddress": null,
+            "isDeletable": true,
+            "isDiscovered": true,
+            "isFex": "false",
+            "isPhysical": "true",
+            "isRbacAccessible": "true",
+            "mgmtIpAddress": "10.0.7.22",
+            "mode": "trunk",
+            "mtu": 9216,
+            "nativeVlanId": -1,
+            "neighbours": [
+              {
+                "sysName": "U19-N9396-1",
+                "switchid": 0,
+                "type": "LAN",
+                "ifName": "Ethernet1/45",
+                "connectedToStr": "U19-N9396-1 (Ethernet1/45)",
+                "discovered": false
+              }
+            ],
+            "operStatusCause": "ok",
+            "operStatusStr": "up",
+            "overlayNetwork": [],
+            "platform": "N9K",
+            "policyChangeSupported": true,
+            "portChannelMemberList": null,
+            "serialNo": "FDO24261WAT",
+            "speedValue": 10000000000,
+            "switchDbId": 5164810,
+            "sysName": "cl4001",
+            "underlayPolicies": [
+              {
+                "id": 5262840,
+                "policyId": "POLICY-5262840",
+                "templateName": "int_trunk_host_11_1",
+                "entityName": "Ethernet1/1",
+                "entityType": "INTERFACE",
+                "status": "NA",
+                "lastModified": 1652218783957,
+                "source": "",
+                "serialNumber": "FDO24261WAT",
+                "policyTag": null,
+                "autoGenerated": true
+              }
+            ],
+            "vdcId": 0,
+            "vdcName": null,
+            "vpcId": 0,
+            "vrf": null,
+            "priMemberIntfList": null,
+            "secMemberIntfList": null,
+            "blockConfig": false,
+            "underlayPolicySource": "",
+            "underlayPolicyTag": "[interface_edit_policy]",
+            "interfaceGroup": null,
+            "hasDeletedOverlay": false,
+            "externalFabric": false,
+            "discovered": true,
+            "aafexPort": false,
+            "groupAssocSupported": true,
+            "editAllowed": true,
+            "deletable": true,
+            "markDeleted": false
+          }]
+
         """
 
-        if self.all_interfaces:
-            self.all_interfaces.clear()
+        local_all_interfaces_details: dict[tuple, dict] = {}
 
-        path = '/globalInterface'
+        path = '/interface/detail'
 
         params = {'serialNumber': serial_number, 'ifName': interface}
 
         logger.info("get_all_interfaces_detail: getting interface details for serial number: {}".format(serial_number))
         response = self._check_response(self.get(path, params=params))
+        #pprint(json.loads(response['MESSAGE']))
 
         for interface in json.loads(response['MESSAGE']):
-            # print(interface)
-            self.all_interfaces[(interface['ifName'], interface['serialNo'],)] = {
+            #print(interface)
+            local_all_interfaces_details[(interface['ifName'], interface['serialNo'],)] = {
                 'interface_name': interface['ifName'], 'interface_type': interface['ifType'],
                 'fabric': interface['fabricName'], 'switch_name': interface['sysName'],
                 'switch_serial': interface['serialNo'],
                 'entity_id': interface['entityId'],
-                'interface_policy': interface['underlayPoliciesStr'],
                 'isPhysical': interface['isPhysical'],
-                'interface_desc': interface['description']}
+                'interface_desc': interface['description'],
+                'adminStatus': interface['adminStatusStr'],
+                'operStatus': interface['operStatusStr'],
+                'operStatusCause': interface['operStatusCause'],
+                'fabricName': interface['fabricName']}
+            if interface['underlayPolicies'] is not None:
+                local_all_interfaces_details[(interface['ifName'], interface['serialNo'],)]['interface_policy'] = \
+                    interface['underlayPolicies'][0]['templateName']
+                local_all_interfaces_details[(interface['ifName'], interface['serialNo'],)]['policyId'] = \
+                    interface['underlayPolicies'][0]['policyId']
+            else:
+                local_all_interfaces_details[(interface['ifName'], interface['serialNo'],)]['interface_policy'] = None
+                local_all_interfaces_details[(interface['ifName'], interface['serialNo'],)]['policyId'] = None
+        return local_all_interfaces_details
+
+    def get_interfaces_details(self, serial_numbers: Optional[Union[list, tuple]] = None,
+                               interface: Optional[str] = None,
+                               policy: Optional[Union[str, list[str]]] = None,
+                               oper: Optional[Union[str, list[str]]] = None,
+                               physical: Optional[bool] = None,
+                               save_to_file: Optional[str] = None,
+                               save_prev: bool = False):
+        """
+
+        :param nv_pairs: optional list of tuples of form [(nvpair key, regex to match value)]
+        :type nv_pairs: list or tuple of tuples
+        :param serial_numbers: required list or tuple of switch serial numbers
+        :type serial_numbers: list or tuple
+        :param save_to_file: optional parameter, if None do not save, if str use as filename to save to
+        :type save_to_file: None or str
+        :param save_prev: if True and  attribute all_interfaces_nvpairs exists,
+        copy to attribute all_interfaces_nvpairs_prev
+        :type save_prev: bool
+
+        pulls all interface policy information from dcnm for a list of serial numbers.
+        saves to a dictionary of the following form with the attribute name all_interfaces_nvpairs
+        """
+
+        if self.all_interfaces_details and not save_prev:
+            self.all_interfaces_details.clear()
+        elif self.all_interfaces_details and save_prev:
+            self.all_interfaces_details_prev = deepcopy(self.all_interfaces_details)
+            self.all_interfaces_details.clear()
+
+        if serial_numbers and isinstance(serial_numbers, str):
+            serial_numbers = [serial_numbers]
+
+        if serial_numbers and isinstance(serial_numbers, (list, tuple)):
+
+            for sn in serial_numbers:
+                interfaces = self.get_all_interfaces_details(serial_number=sn, interface=interface)
+                self.all_interfaces_details.update(interfaces)
+        else:
+            self.all_interfaces_details = self.get_all_interfaces_details(interface=interface)
+
+        if isinstance(policy, str): policy = [policy]
+        if isinstance(oper, str): oper = [oper]
+        if policy or oper or physical:
+            try:
+                self.all_interfaces_details = DcnmInterfaces.get_filtered_interfaces_details(
+                    self.all_interfaces_details,
+                    policy=policy, oper=oper, physical=physical)
+                # logger.debug("get_interfaces_nvpairs: {}".format(self.all_interfaces_nvpairs))
+            except DCNMParamaterError:
+                logger.critical("ERROR: get_interfaces_detail: serial_numbers must be a string or a list of strings\n"
+                                "policy must be a string or a list of strings\n"
+                                "oper must be a string or a list of strings")
+                raise DCNMInterfacesParameterError("serial_numbers must be a string or a list of strings\n"
+                                                   "policy must be a string or a list of strings\n"
+                                                   "oper must be a string or a list of strings")
+
+        if save_to_file is not None:
+            with open(save_to_file, 'w') as f:
+                f.write(str(self.all_interfaces_nvpairs))
+
 
     @error_handler("ERROR: get_all_interfaces_nvpairs: getting interface details and nvpairs for serial number")
     def get_all_interfaces_nvpairs(self, serial_number: Optional[str] = None,
@@ -1199,6 +1323,11 @@ class DcnmInterfaces(HttpApi):
         if pattern is a tuple, the regular expression is element one and element zero is the key of a dictionary where
         the value is the string to be matched
         """
+        if string_to_check is None:
+            return False
+        elif not isinstance(string_to_check, (str, dict)):
+            logger.error("_check_patterns: failure: string_to_check wrong type {}".format(string_to_check))
+            raise DCNMParamaterError("string_to_check must be a string or a dictionary")
         if isinstance(patterns, (list, tuple)):
             for pattern in patterns:
                 if isinstance(pattern, str):
@@ -1427,6 +1556,40 @@ class DcnmInterfaces(HttpApi):
         logger.debug("{} successful: {}".format(method, response))
         return True
 
+    @staticmethod
+    def get_filtered_interfaces_details(interfaces_details, policy, oper, physical):
+        interfaces_details_local = deepcopy(interfaces_details)
+
+        if isinstance(policy, str): policy = [policy]
+        if isinstance(oper, str): oper = [oper]
+        try:
+            for interface, interface_policy in deepcopy(interfaces_details_local).items():
+                if policy:
+                    if not DcnmInterfaces._check_patterns(policy, interface_policy['interface_policy']):
+                        del interfaces_details_local[interface]
+                        continue
+
+                if oper:
+                    if not DcnmInterfaces._check_patterns(oper, interface_policy['operStatus']):
+                        del interfaces_details_local[interface]
+                        continue
+
+                if physical is not None:
+                    if interface_policy['isPhysical'] is not physical:
+                        del interfaces_details_local[interface]
+                        continue
+
+        except DCNMParamaterError:
+            logger.error("ERROR: get_filtered_interfaces_details: Failed filtering details dictionary for {}".format(
+                interfaces_details))
+            logger.error(
+                "ERROR: get_filtered_interfaces_details: Error in filters: policy {} or oper {}".format(
+                    policy, oper))
+            raise DCNMInterfacesParameterError("serial_numbers must be a string or a list of strings\n"
+                                               "policy must be a string or a list of strings\n"
+                                               "oper must be a string or a list of strings")
+        return interfaces_details_local
+
 
 if __name__ == '__main__':
     SCREENLOGLEVEL = logging.DEBUG
@@ -1509,6 +1672,9 @@ if __name__ == '__main__':
     print("FALLBACK")
     print('=' * 40)
     dcnm.wait_for_switches_status(serial_numbers=['FDO24261WAT', 'FDO242702QK'])
+    print('=' * 40)
+    dcnm.get_interfaces_details(serial_numbers=['FDO24261WAT'], oper='up')
+    print(dcnm.all_interfaces_details)
     print('=' * 40)
     print("FINISHED. GO GET PLASTERED!")
     print('=' * 40)
