@@ -354,6 +354,9 @@ class HttpApi:
 
 
 if __name__ == '__main__':
+    ADDRESS = None
+    USERNAME = None
+    PASSWORD = None
     SCREENLOGLEVEL = logging.DEBUG
     FILELOGLEVEL = logging.DEBUG
     logformat = logging.Formatter(
@@ -373,7 +376,7 @@ if __name__ == '__main__':
 
     logger.critical("Started")
     # prompt stdin for username and password
-    dcnm = HttpApi("10.0.2.248")
-    dcnm.login(username="admin", password="MVhHuBr3")
+    dcnm = HttpApi(ADDRESS)
+    dcnm.login(username=USERNAME, password=PASSWORD)
     info = dcnm.get("/control/fabrics/vxlan_cml_3/inventory")
     pprint(info)

@@ -101,6 +101,7 @@ class DcnmInterfaces(HttpApi):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        self.all_switches_details = {}
         self.all_switches_vpc_pairs: dict[str, Optional[str]] = {}
         self.all_leaf_switches: dict[str, str] = {}
         self.all_notleaf_switches: dict[str, str] = {}
@@ -414,6 +415,64 @@ class DcnmInterfaces(HttpApi):
                                            "delete_switch_policies", "DELETE OF", policyId)
         return info
 
+    @error_handler("ERROR: get_all_switches_detail: getting switch details for all switches")
+    def get_all_switches_details(self) -> dict:
+        local_all_switches_details: dict[tuple, dict] = {}
+
+        path = '/inventory/switches'
+
+        logger.info("get_all_switches_detail: getting switch details")
+        response = self._check_response(self.get(path))
+        # pprint(json.loads(response['MESSAGE']))
+        for switch in json.loads(response['MESSAGE']):
+            local_all_switches_details[switch["serialNumber"]] = switch
+        return local_all_switches_details
+
+    @error_handler("ERROR: get_fabric_swtiches_detail: getting switch details for all fabric switches")
+    def get_fabric_switches_details(self, fabric:str) -> dict:
+        local_all_switches_details: dict[tuple, dict] = {}
+
+        path = f'/control/fabrics/{fabric}/inventory'
+
+        logger.info("get_fabric_switches_detail: getting switch details for fabric {}".format(fabric))
+        response = self._check_response(self.get(path))
+        # pprint(json.loads(response['MESSAGE']))
+        for switch in json.loads(response['MESSAGE']):
+            local_all_switches_details[switch["serialNumber"]] = switch
+        return local_all_switches_details
+
+    def get_switches_details(self, serial_numbers: Optional[Union[list, tuple]] = None,
+                               fabric: Optional[str] = None,
+                               save_to_file: Optional[str] = None,
+                               save_prev: bool = False):
+
+        if self.all_switches_details and not save_prev:
+            self.all_switches_details.clear()
+        elif self.all_switches_details and save_prev:
+            self.all_switches_details_prev = deepcopy(self.all_switches_details)
+            self.all_switches_details.clear()
+
+        if serial_numbers and isinstance(serial_numbers, str):
+            serial_numbers = [serial_numbers]
+
+        if fabric is not None and isinstance(fabric, str):
+            switches = self.get_fabric_switches_details(fabric)
+        elif fabric is not None:
+            raise DCNMSwitchesSwitchesParameterError("fabric must be either None or a string")
+        else:
+            switches = self.get_all_switches_details()
+
+        if serial_numbers and isinstance(serial_numbers, (list, tuple)):
+            for sn in deepcopy(switches):
+                if sn not in serial_numbers:
+                    del switches[sn]
+
+        self.all_switches_details = switches
+
+        if save_to_file is not None:
+            with open(save_to_file, 'w') as f:
+                f.write(str(self.all_switches_details))
+
     @error_handler("ERROR: get_all_interfaces_detail: getting interface details for serial number")
     def get_all_interfaces_details(self, serial_number: Optional[str] = None, interface: Optional[str] = None):
         """
@@ -645,8 +704,15 @@ class DcnmInterfaces(HttpApi):
                                save_prev: bool = False):
         """
 
-        :param nv_pairs: optional list of tuples of form [(nvpair key, regex to match value)]
-        :type nv_pairs: list or tuple of tuples
+
+        :param interface: interface or list of interfaces
+        :type interface: str or list
+        :param policy: name of a policy or a list of names
+        :type policy: str or list
+        :param oper: an operational state or list of operational states
+        :type oper: str or list
+        :param physical: true to get only physical interfaces, false to get only non-physical interfaces
+        :type physical: bool
         :param serial_numbers: required list or tuple of switch serial numbers
         :type serial_numbers: list or tuple
         :param save_to_file: optional parameter, if None do not save, if str use as filename to save to
@@ -655,8 +721,17 @@ class DcnmInterfaces(HttpApi):
         copy to attribute all_interfaces_nvpairs_prev
         :type save_prev: bool
 
-        pulls all interface policy information from dcnm for a list of serial numbers.
-        saves to a dictionary of the following form with the attribute name all_interfaces_nvpairs
+        pulls all interface detail information from dcnm for a list of serial numbers.
+        saves to a dictionary of the following form with the attribute name all_interfaces_details
+
+        {('mgmt0', 'FDO24261WAT'): {'interface_name': 'mgmt0', 'interface_type': 'INTERFACE_MGMT', 'fabric': 'site-2',
+        'switch_name': 'cl4001', 'switch_serial': 'FDO24261WAT', 'entity_id': 'FDO24261WAT~mgmt0', 'isPhysical': 'true',
+         'interface_desc': 'mgmt0', 'adminStatus': 'up', 'operStatus': 'up', 'operStatusCause': 'ok', 'fabricName':
+         'site-2', 'interface_policy': 'int_mgmt_11_1', 'policyId': 'POLICY-5164430'}, ('Vlan100', 'FDO24261WAT'):
+         {'interface_name': 'Vlan100', 'interface_type': 'INTERFACE_VLAN', 'fabric': 'site-2', 'switch_name':
+         'cl4001', 'switch_serial': 'FDO24261WAT', 'entity_id': 'FDO24261WAT~Vlan100', 'isPhysical': 'false',
+         'interface_desc': 'Vlan100', 'adminStatus': 'up', 'operStatus': 'up', 'operStatusCause': 'ok',
+         'fabricName': 'site-2', 'interface_policy': None, 'policyId': None}}
         """
 
         if self.all_interfaces_details and not save_prev:
@@ -694,7 +769,7 @@ class DcnmInterfaces(HttpApi):
 
         if save_to_file is not None:
             with open(save_to_file, 'w') as f:
-                f.write(str(self.all_interfaces_nvpairs))
+                f.write(str(self.all_interfaces_details))
 
 
     @error_handler("ERROR: get_all_interfaces_nvpairs: getting interface details and nvpairs for serial number")
@@ -1592,6 +1667,9 @@ class DcnmInterfaces(HttpApi):
 
 
 if __name__ == '__main__':
+    ADDRESS = None
+    USERNAME = None
+    PASSWORD = None
     SCREENLOGLEVEL = logging.DEBUG
     FILELOGLEVEL = logging.DEBUG
     logformat = logging.Formatter(
@@ -1611,8 +1689,8 @@ if __name__ == '__main__':
 
     logger.critical("Started")
     # prompt stdin for username and password
-    dcnm = DcnmInterfaces("10.0.17.99", dryrun=True)
-    dcnm.login(username="rragan", password="MVhHuBr3")
+    dcnm = DcnmInterfaces(ADDRESS, dryrun=True)
+    dcnm.login(username=USERNAME, password=PASSWORD)
 
     dcnm.get_interfaces_nvpairs(save_to_file='all_interfaces.json', serial_numbers=['FDO24261WAT', 'FDO242702QK'])
     pprint(dcnm.all_interfaces_nvpairs)
@@ -1675,6 +1753,11 @@ if __name__ == '__main__':
     print('=' * 40)
     dcnm.get_interfaces_details(serial_numbers=['FDO24261WAT'], oper='up')
     print(dcnm.all_interfaces_details)
+    print('=' * 40)
+    pprint(dcnm.get_all_switches_details())
+    print('=' * 40)
+    print('=' * 40)
+    pprint(dcnm.get_fabric_switches_details('site-2'))
     print('=' * 40)
     print("FINISHED. GO GET PLASTERED!")
     print('=' * 40)

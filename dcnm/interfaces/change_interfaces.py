@@ -9,7 +9,8 @@ from typing import Union, Optional
 from dcnm_interfaces import DcnmInterfaces
 
 from interfaces_utilities import read_existing_descriptions, get_interfaces_to_change, push_to_dcnm, \
-    deploy_to_fabric_using_interface_deploy, verify_interface_change, _dbg, deploy_to_fabric_using_switch_deploy
+    deploy_to_fabric_using_interface_deploy, verify_interface_change, _dbg, deploy_to_fabric_using_switch_deploy, \
+    _failed_dbg
 
 
 def command_args() -> argparse.Namespace:
@@ -129,7 +130,7 @@ class DCNMValueError(Exception):
 
 
 def get_desc_changes(dcnm: DcnmInterfaces, pickle: str, excel: Optional[str] = None,
-                     verbose: bool = True):
+                     verbose: bool = True) -> callable:
     if not excel:
         dcnm.get_switches_policies(templateName='switch_freeform\Z',
                                    config=r"interface\s+[a-zA-Z]+\d+/?\d*\n\s+[Dd]escription\s+")
@@ -199,26 +200,50 @@ def get_cdp_change(interface: tuple, detail: dict, mgmt: bool = True) -> bool:
     return False
 
 
-def get_orphanport_change(interface: tuple, detail: dict) -> bool:
-    logger.debug("start get_orphanport_change: interface {}".format(interface))
-    logger.debug("detail: {}".format(detail))
-    # if not a mgmt interface and either a trunk host or access_host interface
-    if 'mgmt' not in interface[0] and ('int_trunk_host' in detail['policy'] or 'int_access_host' in detail[
-        'policy']) and 'vpc orphan-port enable' not in detail['interfaces'][0]['nvPairs']['CONF']:
-        if not detail['interfaces'][0]['nvPairs']['CONF']:
-            detail['interfaces'][0]['nvPairs']['CONF'] = 'vpc orphan-port suspend'
-            logger.debug("interface: {}, changing orphan port suspend".format(interface))
-            logger.debug("orphan port CONF: {}".format(detail['interfaces'][0]['nvPairs']['CONF']))
-            return True
-        else:
-            # print(interface, detail)
-            detail['interfaces'][0]['nvPairs']['CONF'] = '{}\n{}'.format(
-                detail['interfaces'][0]['nvPairs']['CONF'],
-                'vpc orphan-port suspend')
-            logger.debug("interface: {}, changing orphan port suspend".format(interface))
-            logger.debug("orphan port multiple CONF: {}".format(detail['interfaces'][0]['nvPairs']['CONF']))
-            return True
-    return False
+def get_orphanport_change(dcnm: DcnmInterfaces, uplinks: Optional[dict] = None,
+                          serials: Optional[list] = None) -> callable:
+    if not dcnm.all_switches_details:
+        dcnm.get_switches_details(serial_numbers=serials)
+    local_switches_details = dcnm.all_switches_details
+    local_uplinks: dict[str, list] = {}
+    for model in uplinks:
+        first = uplinks[model][0]
+        last = uplinks[model][1]
+        interface_range = range(int(first.split('/')[1]), int(last.split('/')[1]) + 1)
+        local_uplinks[model] = [f'Ethernet{first.split("/")[0]}/{i}' for i in interface_range]
+    logger.debug("get_orphanport_change: local_uplinks: {}".format(local_uplinks))
+
+    def orphan_port(interface: tuple, detail: dict) -> bool:
+        logger.debug("start get_orphanport_change: interface {}".format(interface))
+        logger.debug("detail: {}".format(detail))
+        #get uplinks
+        model = local_switches_details[interface[1]]['model']
+        logger.debug("orphan_port: model: {}".format(model))
+        this_model_uplinks: list = [local_uplinks[m] for m in uplinks if m in model][0]
+        if not this_model_uplinks:
+            _failed_dbg('orphan_port: No uplink data for model {}'.format(model), ('No uplink data for model', model))
+            raise DCNMValueError('No uplink data for model {}'.format(model))
+        logger.debug("orphan_port: this_model_uplinks: {}".format(this_model_uplinks))
+        # if not a mgmt interface and either a trunk host or access_host interface
+        if 'mgmt' not in interface[0] and \
+                interface[0] not in this_model_uplinks and\
+                ('int_trunk_host' in detail['policy'] or 'int_access_host' in detail['policy']) and \
+                'vpc orphan-port enable' not in detail['interfaces'][0]['nvPairs']['CONF']:
+            if not detail['interfaces'][0]['nvPairs']['CONF']:
+                detail['interfaces'][0]['nvPairs']['CONF'] = 'vpc orphan-port suspend'
+                logger.debug("interface: {}, changing orphan port suspend".format(interface))
+                logger.debug("orphan port CONF: {}".format(detail['interfaces'][0]['nvPairs']['CONF']))
+                return True
+            else:
+                # print(interface, detail)
+                detail['interfaces'][0]['nvPairs']['CONF'] = '{}\n{}'.format(
+                    detail['interfaces'][0]['nvPairs']['CONF'],
+                    'vpc orphan-port suspend')
+                logger.debug("interface: {}, changing orphan port suspend".format(interface))
+                logger.debug("orphan port multiple CONF: {}".format(detail['interfaces'][0]['nvPairs']['CONF']))
+                return True
+        return False
+    return orphan_port
 
 
 def _normal_deploy(args: argparse.Namespace, dcnm: DcnmInterfaces):
@@ -258,7 +283,8 @@ def _normal_deploy(args: argparse.Namespace, dcnm: DcnmInterfaces):
         changes_to_make.append((get_cdp_change, {'mgmt': args.mgmt}, False))
     if args.orphan:
         _dbg("Adding Enabling of Orphan Ports")
-        changes_to_make.append((get_orphanport_change, None, True))
+        changes_to_make.append((get_orphanport_change(dcnm, uplinks={'9336C-FX2': ('1/29', '1/36'),
+           '93240YC-FX2': ('1/49', '1/60')}, serials=serials), None, True))
     interfaces_will_change, interfaces_existing_conf = get_interfaces_to_change(dcnm, changes_to_make)
     with open(args.icpickle, 'wb') as f:
         dump(interfaces_existing_conf, f)
@@ -297,8 +323,7 @@ def _get_serial_numbers(args: argparse.Namespace):
         if args.input_file:
             serials += _read_serials_from_file(args.input_file)
         if not serials:
-            logger.critical("No Serial Numbers Provided!")
-            _dbg("No Serial Numbers Provided!")
+            _failed_dbg("No Serial Numbers Provided!", ("No Serial Numbers Provided!",))
             raise DCNMValueError("No Serial Numbers Provided!")
         if args.verbose: _dbg("switch serial numbers provided", serials)
     return serials
@@ -343,7 +368,8 @@ def depickle(pickle_file: str, verbose: bool):
             depickle_conf = load(f)
     else:
         logger.critical("Error: pickle file {} not found".format(pickle_file))
-        if verbose: _dbg("Pickle file containing original interface configs not found", pickle_file)
+        _failed_dbg("Error: pickle file {} not found".format(pickle_file),
+                    ("Pickle file containing original interface configs not found", pickle_file))
         raise DCNMFileError("Error: input file {} not found".format(pickle_file))
     return depickle_conf
 
