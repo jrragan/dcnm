@@ -51,7 +51,6 @@ Potential uplinks are excluded. Uplinks are defined by this dictionary. `{'9336C
            an error is raised. 
 ```
 PS C:\Users\rragan\Documents\PyProjects\dcnm\dcnm\interfaces> python .\change_interfaces.py -a 10.0.17.99 -n FDO24261WAT FDO242702QK -o -v --deploy -j
-20
 2022-06-01 15:42:38,609: 63368 - MainThread - (change_interfaces.py:418) - <module> - CRITICAL - message: Started
 ============================================================
 args:
