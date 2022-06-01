@@ -124,7 +124,7 @@ class DcnmInterfaces(HttpApi):
         all_notleaf_switches
 
         """
-
+        logger.info("get all switches")
         if self.all_leaf_switches:
             self.all_leaf_switches.clear()
         if self.all_notleaf_switches:
@@ -384,7 +384,7 @@ class DcnmInterfaces(HttpApi):
         """ Get vpc pair data from api and return data structure """
 
         path = "/interface/vpcpair_serial_number"
-        data = self._check_response(dcnm.get(path, errors=[
+        data = self._check_response(self.get(path, errors=[
             (500, "The specified serial number is not part of a vPC pair or any other internal server error.")],
                                              params={'serial_number': serial_number}))
         if 'vpc_pair_sn' in data["DATA"]:
@@ -406,6 +406,7 @@ class DcnmInterfaces(HttpApi):
                     self.all_switches_vpc_pairs[serial_number] = None
 
     def delete_switch_policies(self, policyId: Union[str, list]):
+        logger.info("delete switch policies")
         if isinstance(policyId, str):
             path: str = f'/control/policies/{policyId}'
         elif isinstance(policyId, (list, tuple)):
@@ -445,7 +446,7 @@ class DcnmInterfaces(HttpApi):
                                fabric: Optional[str] = None,
                                save_to_file: Optional[str] = None,
                                save_prev: bool = False):
-
+        logger.info("get switches details")
         if self.all_switches_details and not save_prev:
             self.all_switches_details.clear()
         elif self.all_switches_details and save_prev:
@@ -733,7 +734,7 @@ class DcnmInterfaces(HttpApi):
          'interface_desc': 'Vlan100', 'adminStatus': 'up', 'operStatus': 'up', 'operStatusCause': 'ok',
          'fabricName': 'site-2', 'interface_policy': None, 'policyId': None}}
         """
-
+        logger.info("get interfaces details")
         if self.all_interfaces_details and not save_prev:
             self.all_interfaces_details.clear()
         elif self.all_interfaces_details and save_prev:
@@ -873,7 +874,7 @@ class DcnmInterfaces(HttpApi):
         pulls all interface policy information from dcnm for a list of serial numbers.
         saves to a dictionary of the following form with the attribute name all_interfaces_nvpairs
         """
-
+        logger.info("get interfaces nvpairs")
         if self.all_interfaces_nvpairs and not save_prev:
             self.all_interfaces_nvpairs.clear()
         elif self.all_interfaces_nvpairs and save_prev:
@@ -930,7 +931,7 @@ class DcnmInterfaces(HttpApi):
         Deploy configuration of switch specified by the serial number. If fabric is not provided the script will attempt
         to discover it. Returns True if successful, False otherwise.
         """
-
+        logger.info("deploy switch conifg")
         if fabric is None:
             fabric = self.all_leaf_switches.get(serial_number) or self.all_notleaf_switches.get(serial_number)
             if not fabric:
@@ -999,6 +1000,7 @@ class DcnmInterfaces(HttpApi):
                                            "CREATION OF", interface)
         return info
 
+    @spinner()
     def put_interface_changes(self, interfaces_will_change: dict[tuple, dict]) -> tuple[set, set]:
         """
 
@@ -1050,6 +1052,7 @@ class DcnmInterfaces(HttpApi):
 
         iterates through a dictionary of interfaces to change and calls method to push changes to DCNM
         """
+        logger.info("Putting interface changes to dcnm")
         interfaces_will_change_local: dict[tuple, dict] = deepcopy(interfaces_will_change)
         failed: set = set()
         success: set = set()
@@ -1062,7 +1065,7 @@ class DcnmInterfaces(HttpApi):
                 logger.critical(details)
                 failed.add(interface)
             elif result:
-                logger.info("put_interface_changes:  {} successfully changed. Yay.".format(interface))
+                logger.debug("put_interface_changes:  {} successfully changed. Yay.".format(interface))
                 logger.debug(details)
                 success.add(interface)
             else:
@@ -1106,6 +1109,7 @@ class DcnmInterfaces(HttpApi):
 
         Provide a list of interfaces to deploy. Returns True if successful.
         """
+        logger.info("Deploying interface configs to switches")
         path = '/globalInterface/deploy'
         if isinstance(payload, dict):
             payload = [payload]
@@ -1129,7 +1133,7 @@ class DcnmInterfaces(HttpApi):
         path = f'/control/fabrics/{fabric}/config-deploy'
         temp_timers = self.timeout
         self.timeout = deploy_timeout
-        logger.debug("deploying config fabric {}".format(fabric))
+        logger.info("deploying config fabric {}".format(fabric))
         info = self._check_action_response(self.post(path,
                                                      errors=[
                                                          (500,
@@ -1172,7 +1176,7 @@ class DcnmInterfaces(HttpApi):
         provide serial number of switch, returns name of fabric to which switch belongs
         """
         path = f'/control/switches/{serial_number}/fabric-name'
-        logger.debug("get_switch_fabric: getting fabric for switch {}".format(serial_number))
+        logger.info("get_switch_fabric: getting fabric for switch {}".format(serial_number))
         response = self._check_response(self.get(path, errors=[(500, "Invalid switch or Other exception")]))
         return json.loads(response['MESSAGE'])['fabricName']
 
@@ -1236,7 +1240,7 @@ class DcnmInterfaces(HttpApi):
 
         path = f'/control/fabrics/msd/fabric-associations'
 
-        logger.info("get_fabric_details: getting fabric ids for")
+        logger.debug("get_fabric_details: getting fabric ids for")
         response = self._check_response(self.get(path))
 
         for fabric in json.loads(response['MESSAGE']):
@@ -1283,6 +1287,7 @@ class DcnmInterfaces(HttpApi):
         }
         """
         path = '/control/policies'
+        logger.info("post new policy to dcnm")
         logger.debug("post_new_policy: details: {}".format(details))
         info = self._check_action_response(self.post(path, data=details, errors=[
             (500, "Invalid payload or any other internal server error")]), "post_new_policy",
@@ -1290,6 +1295,7 @@ class DcnmInterfaces(HttpApi):
         return info
 
     def get_switches_status(self, serial_numbers: Optional[Union[str, list[str]]] = None) -> dict[str, str]:
+        logger.info("get swtiches status")
         local_status: dict[str, list] = {}
         result_status: dict[str, str] = {}
         if serial_numbers:

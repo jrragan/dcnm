@@ -47,7 +47,7 @@ def command_args() -> argparse.Namespace:
                         help="descriptions xlsx file")
     parser.add_argument("-g", "--debug", action="store_true",
                         help="Shortcut for setting screen and logfile levels to DEBUG")
-    parser.add_argument("-s", "--screenloglevel", metavar="LOGLEVE", default="INFO",
+    parser.add_argument("-s", "--screenloglevel", metavar="LOGLEVEL", default="INFO",
                         choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], help="Default is INFO.")
     parser.add_argument("-l", "--loglevel", metavar="LOGLEVEL", default=None,
                         choices=['NONE', 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
@@ -71,14 +71,14 @@ def command_args() -> argparse.Namespace:
                         help="filename for pickle file used to save original interface configuration policies\n"
                              "if included for deploy, it must also be included for backout")
     parser.add_argument("-j", "--switch_deploy", action="store_true",
-                        help="By default interface deploy is used (along with policy deploy when needed."
-                             "In certain situations this can lead to the need for a second deploy especially "
-                             "when there is a switch level policy applying an interface level config. This will"
-                             "enable a switch level deploy method.")
+                        help="By default interface deploy is used (along with policy deploy when needed.\n"
+                             "In certain situations this can lead to the need for a second deploy especially \n"
+                             "when there is a switch level policy applying an interface level config. This option\n"
+                             "enables a switch level deploy method.")
     parser.add_argument("-b", "--backout", action="store_true",
-                        help="rerun app with this option to fall back to original configuration\n"
-                             "if running backout, you should run program with all options included\n"
-                             "in the original deploy")
+                        help="Rerun app with this option to fall back to original configuration.\n"
+                             "If running backout, you should run program with all options included\n"
+                             "in the original deploy.")
     parser.add_argument("-t", "--timeout", type=int, metavar="SECONDS", default=300,
                         help="timeout in seconds of the deploy operations\n" \
                              "default is 300 seconds")
@@ -341,13 +341,21 @@ def _fallback(args: argparse.Namespace, dcnm: DcnmInterfaces):
 
     fallback to original config: push changes to dcnm, deploy changes to fabric and verify changes based on cli args
     """
-    logger.info("FALLING BACK")
     if args.verbose: _dbg("FALLING BACK!")
+    logger.info("FALLING BACK")
     serials = _get_serial_numbers(args)
+    if args.switch_deploy:
+        if args.all:
+            dcnm.get_all_switches()
+        else:
+            dcnm.get_switches_by_serial_number(serial_numbers=serials)
+        if args.verbose:
+            _dbg("number of leaf switches", len(dcnm.all_leaf_switches.keys()))
+            _dbg("leaf switches", dcnm.all_leaf_switches.keys())
+
     interfaces_existing_conf = depickle(args.icpickle, args.verbose)
     if args.verbose: _dbg("these interface configs will be restored", interfaces_existing_conf)
 
-    interface_desc_policies: Union[dict[str, list], None] = None
     policy_ids: Union[list, None] = None
     if args.description and not args.excel:
         interface_desc_policies: dict[str, list] = depickle(args.pickle, args.verbose)
