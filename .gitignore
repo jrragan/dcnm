@@ -14,3 +14,4 @@
 /dcnm/.gitignore
 /dcnm/connection/
 /dcnm/inventory/
+dcnm/interfaces/__pycache__/

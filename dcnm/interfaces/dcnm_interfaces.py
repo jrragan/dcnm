@@ -7,16 +7,15 @@ import threading
 import traceback
 from collections import defaultdict
 from copy import deepcopy
-from dataclasses import dataclass
 from datetime import timedelta
 from itertools import cycle
 from pickle import dump, load
 from pprint import pprint
 from time import sleep, time
-from typing import Union, Optional, Any
+from typing import Union, Optional, Any, Dict, List, Tuple, Set, NamedTuple
 
 from DCNM_errors import DCNMServerResponseError, DCNMInterfacesParameterError, \
-    DCNMSwitchesPoliciesParameterError, DCNMParamaterError, DCNMSwitchesSwitchesParameterError, DCNMPolicyDeployError, \
+    DCNMSwitchesPoliciesParameterError, DCNMParameterError, DCNMSwitchesSwitchesParameterError, DCNMPolicyDeployError, \
     DCNMSwitchStatusParameterError, DCNMSwitchStatusError
 from dcnm_connect import HttpApi
 
@@ -91,8 +90,7 @@ def spinner(msg="Elapsed Time"):
     return decorator
 
 
-@dataclass
-class info_from_policies:
+class InfoFromPolicies(NamedTuple):
     info: dict
     policyId: str
 
@@ -101,18 +99,18 @@ class DcnmInterfaces(HttpApi):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.all_switches_details = {}
-        self.all_switches_vpc_pairs: dict[str, Optional[str]] = {}
-        self.all_leaf_switches: dict[str, str] = {}
-        self.all_notleaf_switches: dict[str, str] = {}
-        self.all_interfaces_details: dict[tuple, dict] = {}
-        self.all_interfaces_details_prev: dict[tuple, dict] = {}
-        self.all_interfaces_nvpairs: dict[tuple, dict] = {}
-        # needed for fallback
-        self.all_interfaces_nvpairs_prev: dict[tuple, dict] = {}
+        self.all_switches_details: dict = {}
+        self.all_switches_details_prev: dict = {}
+        self.all_switches_vpc_pairs: Dict[str, Optional[str]] = {}
+        self.all_leaf_switches: Dict[str, str] = {}
+        self.all_notleaf_switches: Dict[str, str] = {}
+        self.all_interfaces_details: Dict[tuple, dict] = {}
+        self.all_interfaces_details_prev: Dict[tuple, dict] = {}
+        self.all_interfaces_nvpairs: Dict[tuple, dict] = {}
+        self.all_interfaces_nvpairs_prev: Dict[tuple, dict] = {}
         self.all_switches_policies = defaultdict(list)
         self.all_switches_policies_prev: dict = {}
-        self.fabrics: dict[str, dict] = {}
+        self.fabrics: Dict[str, dict] = {}
 
     @error_handler("ERROR getting switch serial numbers")
     def get_all_switches(self):
@@ -188,6 +186,11 @@ class DcnmInterfaces(HttpApi):
         :type templateName: str or None
         :param config: optional regex str
         :type config: str or None
+        :param save_to_file: optional parameter, if None do not save, if str use as filename to save to
+        :type save_to_file: None or str
+        :param save_prev: if True and  attribute all_switches_policies exists,
+        copy to attribute all_switches_policies_prev
+        :type save_prev: bool
         :return: filtered dictionary of switch policies
         :rtype: dict[serial_number: [list of policies]}
 
@@ -327,9 +330,12 @@ class DcnmInterfaces(HttpApi):
                         self.all_notleaf_switches.get(sn, 'nothing_here') != fabric:
                     del self.all_switches_policies[sn]
 
-        if isinstance(description, str): description = [description]
-        if isinstance(templateName, str): templateName = [templateName]
-        if isinstance(config, str): config = [config]
+        if isinstance(description, str):
+            description = [description]
+        if isinstance(templateName, str):
+            templateName = [templateName]
+        if isinstance(config, str):
+            config = [config]
         try:
             for sn, policy_list in deepcopy(self.all_switches_policies).items():
                 for policy in deepcopy(policy_list):
@@ -363,7 +369,7 @@ class DcnmInterfaces(HttpApi):
                             continue
                     elif config:
                         raise DCNMSwitchesPoliciesParameterError("config parameter must be a list or tuple")
-        except DCNMParamaterError:
+        except DCNMParameterError:
             raise DCNMSwitchesPoliciesParameterError("description must be a string or a list of strings\n"
                                                      "templateName must be a string or a list of strings\n"
                                                      "config must be a string or a list of strings")
@@ -418,7 +424,7 @@ class DcnmInterfaces(HttpApi):
 
     @error_handler("ERROR: get_all_switches_detail: getting switch details for all switches")
     def get_all_switches_details(self) -> dict:
-        local_all_switches_details: dict[tuple, dict] = {}
+        local_all_switches_details: Dict[tuple, dict] = {}
 
         path = '/inventory/switches'
 
@@ -430,8 +436,8 @@ class DcnmInterfaces(HttpApi):
         return local_all_switches_details
 
     @error_handler("ERROR: get_fabric_swtiches_detail: getting switch details for all fabric switches")
-    def get_fabric_switches_details(self, fabric:str) -> dict:
-        local_all_switches_details: dict[tuple, dict] = {}
+    def get_fabric_switches_details(self, fabric: str) -> dict:
+        local_all_switches_details: Dict[tuple, dict] = {}
 
         path = f'/control/fabrics/{fabric}/inventory'
 
@@ -443,9 +449,9 @@ class DcnmInterfaces(HttpApi):
         return local_all_switches_details
 
     def get_switches_details(self, serial_numbers: Optional[Union[list, tuple]] = None,
-                               fabric: Optional[str] = None,
-                               save_to_file: Optional[str] = None,
-                               save_prev: bool = False):
+                             fabric: Optional[str] = None,
+                             save_to_file: Optional[str] = None,
+                             save_prev: bool = False):
         logger.info("get switches details")
         if self.all_switches_details and not save_prev:
             self.all_switches_details.clear()
@@ -663,7 +669,7 @@ class DcnmInterfaces(HttpApi):
 
         """
 
-        local_all_interfaces_details: dict[tuple, dict] = {}
+        local_all_interfaces_details: Dict[tuple, dict] = {}
 
         path = '/interface/detail'
 
@@ -671,10 +677,10 @@ class DcnmInterfaces(HttpApi):
 
         logger.info("get_all_interfaces_detail: getting interface details for serial number: {}".format(serial_number))
         response = self._check_response(self.get(path, params=params))
-        #pprint(json.loads(response['MESSAGE']))
+        # pprint(json.loads(response['MESSAGE']))
 
         for interface in json.loads(response['MESSAGE']):
-            #print(interface)
+            # print(interface)
             local_all_interfaces_details[(interface['ifName'], interface['serialNo'],)] = {
                 'interface_name': interface['ifName'], 'interface_type': interface['ifType'],
                 'fabric': interface['fabricName'], 'switch_name': interface['sysName'],
@@ -698,8 +704,8 @@ class DcnmInterfaces(HttpApi):
 
     def get_interfaces_details(self, serial_numbers: Optional[Union[list, tuple]] = None,
                                interface: Optional[str] = None,
-                               policy: Optional[Union[str, list[str]]] = None,
-                               oper: Optional[Union[str, list[str]]] = None,
+                               policy: Optional[Union[str, List[str]]] = None,
+                               oper: Optional[Union[str, List[str]]] = None,
                                physical: Optional[bool] = None,
                                save_to_file: Optional[str] = None,
                                save_prev: bool = False):
@@ -752,15 +758,17 @@ class DcnmInterfaces(HttpApi):
         else:
             self.all_interfaces_details = self.get_all_interfaces_details(interface=interface)
 
-        if isinstance(policy, str): policy = [policy]
-        if isinstance(oper, str): oper = [oper]
+        if isinstance(policy, str):
+            policy = [policy]
+        if isinstance(oper, str):
+            oper = [oper]
         if policy or oper or physical:
             try:
                 self.all_interfaces_details = DcnmInterfaces.get_filtered_interfaces_details(
                     self.all_interfaces_details,
                     policy=policy, oper=oper, physical=physical)
                 # logger.debug("get_interfaces_nvpairs: {}".format(self.all_interfaces_nvpairs))
-            except DCNMParamaterError:
+            except DCNMParameterError:
                 logger.critical("ERROR: get_interfaces_detail: serial_numbers must be a string or a list of strings\n"
                                 "policy must be a string or a list of strings\n"
                                 "oper must be a string or a list of strings")
@@ -772,14 +780,14 @@ class DcnmInterfaces(HttpApi):
             with open(save_to_file, 'w') as f:
                 f.write(str(self.all_interfaces_details))
 
-
     @error_handler("ERROR: get_all_interfaces_nvpairs: getting interface details and nvpairs for serial number")
     def get_all_interfaces_nvpairs(self, serial_number: Optional[str] = None,
-                                   interface: Optional[str] = None) -> dict[tuple, dict]:
+                                   interface: Optional[str] = None) -> Dict[tuple, dict]:
         """
 
-        :param self:
-        :type self:
+
+        :param serial_number: optional serial number of a switch
+        :type serial_number: str
         :param interface: optional filter, ifName
         :type interface: str
 
@@ -832,7 +840,7 @@ class DcnmInterfaces(HttpApi):
         # the requested interface information dictionary
         # for use with get_interfaces_nvpairs method
 
-        local_all_interfaces_nvpairs: dict[tuple, dict] = {}
+        local_all_interfaces_nvpairs: Dict[tuple, dict] = {}
 
         path = '/interface'
 
@@ -853,10 +861,10 @@ class DcnmInterfaces(HttpApi):
 
     def get_interfaces_nvpairs(self, serial_numbers: Optional[Union[list, tuple]] = None,
                                interface: Optional[str] = None,
-                               policy: Optional[Union[str, list[str]]] = None,
-                               config: Optional[Union[str, list[str]]] = None,
-                               non_config: Optional[Union[str, list[str]]] = None,
-                               nv_pairs: Optional[list[tuple[str, str]]] = None,
+                               policy: Optional[Union[str, List[str]]] = None,
+                               config: Optional[Union[str, List[str]]] = None,
+                               non_config: Optional[Union[str, List[str]]] = None,
+                               nv_pairs: Optional[List[Tuple[str, str]]] = None,
                                save_to_file: Optional[str] = None,
                                save_prev: bool = False):
         """
@@ -865,6 +873,14 @@ class DcnmInterfaces(HttpApi):
         :type nv_pairs: list or tuple of tuples
         :param serial_numbers: required list or tuple of switch serial numbers
         :type serial_numbers: list or tuple
+        :param non_config: optional regex or list of regexes of items missing from the config
+        :type non_config: str or list of strings
+        :param config: optional regex or list of regexes of items in the config
+        :type config: str or list of strings
+        :param policy: optional regex or list of regexes of policy names to match
+        :type policy: str or list of strings
+        :param interface: optional interface
+        :type interface: str
         :param save_to_file: optional parameter, if None do not save, if str use as filename to save to
         :type save_to_file: None or str
         :param save_prev: if True and  attribute all_interfaces_nvpairs exists,
@@ -888,13 +904,16 @@ class DcnmInterfaces(HttpApi):
 
             for sn in serial_numbers:
                 interfaces = self.get_all_interfaces_nvpairs(serial_number=sn, interface=interface)
-                self.all_interfaces_nvpairs.update((interfaces))
+                self.all_interfaces_nvpairs.update(interfaces)
         else:
             self.all_interfaces_nvpairs = self.get_all_interfaces_nvpairs(interface=interface)
 
-        if isinstance(policy, str): policy = [policy]
-        if isinstance(config, str): config = [config]
-        if isinstance(non_config, str): non_config = [non_config]
+        if isinstance(policy, str):
+            policy = [policy]
+        if isinstance(config, str):
+            config = [config]
+        if isinstance(non_config, str):
+            non_config = [non_config]
         if policy or config or non_config or nv_pairs:
             try:
                 self.all_interfaces_nvpairs = DcnmInterfaces.get_filtered_interfaces_nvpairs(
@@ -903,7 +922,7 @@ class DcnmInterfaces(HttpApi):
                     non_config=non_config,
                     nv_pairs=nv_pairs)
                 # logger.debug("get_interfaces_nvpairs: {}".format(self.all_interfaces_nvpairs))
-            except DCNMParamaterError:
+            except DCNMParameterError:
                 logger.critical("ERROR: get_interfaces_nvpairs: serial_numbers must be a string or a list of strings\n"
                                 "policy must be a string or a list of strings\n"
                                 "nv_pairs must be a list of tuples of two strings\n"
@@ -921,10 +940,13 @@ class DcnmInterfaces(HttpApi):
     def deploy_switch_config(self, serial_number: str, fabric: Optional[str] = None, deploy_timeout: int = 300) -> bool:
         """
 
+
         :param serial_number: required, serial number of switch
         :type serial_number: str
         :param fabric: optional, fabric name
         :type fabric: str
+        :param deploy_timeout: optional timeout in seconds, default is 5 minutes
+        :type deploy_timeout: integer
         :return: True if successful, False otherwise
         :rtype: bool
 
@@ -1001,7 +1023,7 @@ class DcnmInterfaces(HttpApi):
         return info
 
     @spinner()
-    def put_interface_changes(self, interfaces_will_change: dict[tuple, dict]) -> tuple[set, set]:
+    def put_interface_changes(self, interfaces_will_change: Dict[tuple, dict]) -> Tuple[set, set]:
         """
 
         :param self:
@@ -1053,7 +1075,7 @@ class DcnmInterfaces(HttpApi):
         iterates through a dictionary of interfaces to change and calls method to push changes to DCNM
         """
         logger.info("Putting interface changes to dcnm")
-        interfaces_will_change_local: dict[tuple, dict] = deepcopy(interfaces_will_change)
+        interfaces_will_change_local: Dict[tuple, dict] = deepcopy(interfaces_will_change)
         failed: set = set()
         success: set = set()
         for interface, details in interfaces_will_change_local.items():
@@ -1083,8 +1105,7 @@ class DcnmInterfaces(HttpApi):
     def deploy_interfaces(self, payload: Union[list, dict], deploy_timeout: int = 300) -> Optional[bool]:
         """
 
-        :param self:
-        :type self:
+
         :param payload:
         list of form
         [
@@ -1104,6 +1125,8 @@ class DcnmInterfaces(HttpApi):
           }
 
         :type payload: list or dictionary
+        :param deploy_timeout: timeout in seconds, default is 5 minutes
+        :type deploy_timeout: integer
         :return: True if successful, False otherwise
         :rtype: bool
 
@@ -1124,9 +1147,10 @@ class DcnmInterfaces(HttpApi):
     @spinner()
     def deploy_fabric_config(self, fabric: str, deploy_timeout: int = 300) -> Optional[bool]:
         """
-
         :param fabric: name of fabric
         :type fabric: str
+        :param deploy_timeout: timeout in seconds, default is 5 minutes
+        :type deploy_timeout: int
         :return: True if successful, False otherwise
         :rtype: bool
         """
@@ -1146,8 +1170,9 @@ class DcnmInterfaces(HttpApi):
     def deploy_policies(self, policies: list, deploy_timeout: int = 300) -> Optional[bool]:
         """
 
+        :param deploy_timeout: timeout in seconds, default is 300 seconds
+        :type deploy_timeout: int
         :param policies: list of policies to deploy, Eg :- ["POLICY-1200","POLICY-1220"]
-        :type fabric: list
         :return: True if successful, False otherwise
         :rtype: bool
         """
@@ -1294,10 +1319,10 @@ class DcnmInterfaces(HttpApi):
                                            "CREATION OF POLICY", details)
         return info
 
-    def get_switches_status(self, serial_numbers: Optional[Union[str, list[str]]] = None) -> dict[str, str]:
+    def get_switches_status(self, serial_numbers: Optional[Union[str, List[str]]] = None) -> Dict[str, str]:
         logger.info("get swtiches status")
-        local_status: dict[str, list] = {}
-        result_status: dict[str, str] = {}
+        local_status: Dict[str, list] = {}
+        result_status: Dict[str, str] = {}
         if serial_numbers:
             if isinstance(serial_numbers, str):
                 serial_numbers = [serial_numbers]
@@ -1343,7 +1368,7 @@ class DcnmInterfaces(HttpApi):
 
     @spinner("elapsed time waiting for switches status")
     def wait_for_switches_status(self, status: str = "In-Sync", timeout: float = 300, sleep_time: float = 10,
-                                 serial_numbers: Optional[Union[str, list[str]]] = None) -> Union[bool, dict]:
+                                 serial_numbers: Optional[Union[str, List[str]]] = None) -> Union[bool, dict]:
         """
 
         :param status: switch status to watch for
@@ -1390,7 +1415,7 @@ class DcnmInterfaces(HttpApi):
         return bad_results
 
     @staticmethod
-    def _check_patterns(patterns: list[Union[str, tuple]], string_to_check: Union[str, dict]) -> bool:
+    def _check_patterns(patterns: List[Union[str, tuple]], string_to_check: Union[str, dict]) -> bool:
         """
 
         :param patterns: regular expressions or a tuple
@@ -1408,7 +1433,7 @@ class DcnmInterfaces(HttpApi):
             return False
         elif not isinstance(string_to_check, (str, dict)):
             logger.error("_check_patterns: failure: string_to_check wrong type {}".format(string_to_check))
-            raise DCNMParamaterError("string_to_check must be a string or a dictionary")
+            raise DCNMParameterError("string_to_check must be a string or a dictionary")
         if isinstance(patterns, (list, tuple)):
             for pattern in patterns:
                 if isinstance(pattern, str):
@@ -1421,14 +1446,14 @@ class DcnmInterfaces(HttpApi):
                         return True
                 else:
                     logger.error("_check_patterns: failure: pattern {}, string {}".format(pattern, string_to_check))
-                    raise DCNMParamaterError("pattern must be a string or tuple of two strings")
+                    raise DCNMParameterError("pattern must be a string or tuple of two strings")
         else:
             logger.error("_check_patterns: patterns wrong type {}".format(patterns))
-            raise DCNMParamaterError("patterns must be a string or a list or tuple")
+            raise DCNMParameterError("patterns must be a string or a list or tuple")
         return False
 
     @staticmethod
-    def create_deploy_list(deploy_list: Union[set[tuple], list[tuple], tuple[tuple]]) -> list[dict]:
+    def create_deploy_list(deploy_list: Union[Set[tuple], List[tuple], Tuple[tuple]]) -> List[dict]:
         """
 
         :param deploy_list: an iterator with items of the form ('Ethernet1/38', 'FDO24270209')
@@ -1445,10 +1470,10 @@ class DcnmInterfaces(HttpApi):
         return new_deploy_list
 
     @staticmethod
-    def get_filtered_interfaces_nvpairs(interfaces_nv_pairs: dict, policy: Optional[Union[str, list[str]]] = None,
-                                        config: Optional[Union[str, list[str]]] = None,
-                                        non_config: Optional[Union[str, list[str]]] = None,
-                                        nv_pairs: Optional[list[tuple[str, str]]] = None,
+    def get_filtered_interfaces_nvpairs(interfaces_nv_pairs: dict, policy: Optional[Union[str, List[str]]] = None,
+                                        config: Optional[Union[str, List[str]]] = None,
+                                        non_config: Optional[Union[str, List[str]]] = None,
+                                        nv_pairs: Optional[List[Tuple[str, str]]] = None,
                                         ) -> dict:
         """
 
@@ -1525,9 +1550,12 @@ class DcnmInterfaces(HttpApi):
         """
         interfaces_nv_pairs_local = deepcopy(interfaces_nv_pairs)
 
-        if isinstance(policy, str): policy = [policy]
-        if isinstance(config, str): config = [config]
-        if isinstance(non_config, str): config = [config]
+        if isinstance(policy, str):
+            policy = [policy]
+        if isinstance(config, str):
+            config = [config]
+        if isinstance(non_config, str):
+            config = [config]
         try:
             for interface, interface_policy in deepcopy(interfaces_nv_pairs_local).items():
                 if policy:
@@ -1550,7 +1578,7 @@ class DcnmInterfaces(HttpApi):
                         del interfaces_nv_pairs_local[interface]
                         continue
 
-        except DCNMParamaterError:
+        except DCNMParameterError:
             logger.error("ERROR: get_filtered_interfaces_nvpairs: Failed filtering nvpairs dictionary for {}".format(
                 interfaces_nv_pairs))
             logger.error(
@@ -1563,10 +1591,10 @@ class DcnmInterfaces(HttpApi):
         return interfaces_nv_pairs_local
 
     @staticmethod
-    def get_info_from_policies_config(policies: dict[str, list], config: str,
-                                      key_tuple: Optional[Union[list[int], tuple[int]]] = [0],
-                                      value_tuple: Optional[Union[list[int], tuple[int]]] = [1]) -> Optional[list[
-        info_from_policies]]:
+    def get_info_from_policies_config(policies: Dict[str, list], config: str,
+                                      key_tuple: Optional[Union[List[int], Tuple[int]]] = [0],
+                                      value_tuple: Optional[Union[List[int], Tuple[int]]] = [1]) -> Optional[List[
+        InfoFromPolicies]]:
         """
 
         :param policies: a dictionary of switch policies
@@ -1584,16 +1612,16 @@ class DcnmInterfaces(HttpApi):
 
         takes switch policies and patterns to match
         returns list of info_from_polices data class objects of the form
-        info_from_policies(existing_descriptions_local, policyId)
+        InfoFromPolicies(existing_descriptions_local, policyId)
         where existing_descriptions is a dictionary and the policyId is a str
         """
         existing_policyId_local = []
         policies_local: dict = deepcopy(policies)
         pattern = re.compile(config, re.MULTILINE)
         for SN, policies in policies_local.items():
-            existing_descriptions_local: dict = dict()
             for policy in policies:
                 policyId = policy['policyId']
+                existing_descriptions_local: dict = dict()
                 result = pattern.findall(policy['generatedConfig'])
                 if result:
                     for item in result:
@@ -1615,21 +1643,27 @@ class DcnmInterfaces(HttpApi):
                         else:
                             derived_value = tuple(value_tuple)
                         existing_descriptions_local[derived_key] = derived_value
-                    existing_policyId_local.append(info_from_policies(existing_descriptions_local, policyId))
-        logger.debug(
-            "read_existing_descriptions_from_policies: existing descriptions: {}".format(existing_descriptions_local))
+                    logger.debug("derived key {}, derived value {}".format(derived_key, derived_value))
+
+                    existing_descriptions_local[derived_key] = derived_value
+                logger.debug(
+                    "read_existing_descriptions_from_policies: existing descriptions: {}".format(
+                        existing_descriptions_local))
+                existing_policyId_local.append(InfoFromPolicies(existing_descriptions_local, policyId))
         if not existing_policyId_local:
             return None
         return existing_policyId_local
 
-    def _check_response(self, response: dict):
+    @staticmethod
+    def _check_response(response: dict):
         if response['RETURN_CODE'] > 299:
             logger.error("ERROR IN RESPONSE FROM DCNM: {}".format(response))
             raise DCNMServerResponseError("{}".format(response))
         else:
             return response
 
-    def _check_action_response(self, response: dict, method: str, message: str, data: Any) -> bool:
+    @staticmethod
+    def _check_action_response(response: dict, method: str, message: str, data: Any) -> bool:
         if response["RETURN_CODE"] != 200:
             logger.critical("ERROR: {}: {} {} FAILED".format(method, message, data))
             logger.critical("ERROR: {}: returned info {}".format(method, response))
@@ -1641,8 +1675,10 @@ class DcnmInterfaces(HttpApi):
     def get_filtered_interfaces_details(interfaces_details, policy, oper, physical):
         interfaces_details_local = deepcopy(interfaces_details)
 
-        if isinstance(policy, str): policy = [policy]
-        if isinstance(oper, str): oper = [oper]
+        if isinstance(policy, str):
+            policy = [policy]
+        if isinstance(oper, str):
+            oper = [oper]
         try:
             for interface, interface_policy in deepcopy(interfaces_details_local).items():
                 if policy:
@@ -1660,7 +1696,7 @@ class DcnmInterfaces(HttpApi):
                         del interfaces_details_local[interface]
                         continue
 
-        except DCNMParamaterError:
+        except DCNMParameterError:
             logger.error("ERROR: get_filtered_interfaces_details: Failed filtering details dictionary for {}".format(
                 interfaces_details))
             logger.error(
@@ -1715,7 +1751,7 @@ if __name__ == '__main__':
     # dcnm.get_switches_policies(serial_numbers=['9Y04VBM75I8'], templateName='switch_freeform\Z')
     # pprint(dcnm.all_switches_policies)
     #
-    dcnm.get_switches_policies(templateName='switch_freeform\Z',
+    dcnm.get_switches_policies(templateName=r'switch_freeform\Z',
                                config=r"interface\s+[a-zA-Z]+\d+/?\d*\n\s+description\s+")
     print("=" * 40)
     pprint(dcnm.all_switches_policies)
@@ -1730,7 +1766,7 @@ if __name__ == '__main__':
     policy_ids: set = {c.policyId for c in existing_descriptions_from_policies}
     print(policy_ids)
     dcnm.delete_switch_policies(list(policy_ids))
-    existing_descriptions: dict[tuple, str] = {k: v for c in existing_descriptions_from_policies for k, v in
+    existing_descriptions: Dict[tuple, str] = {k: v for c in existing_descriptions_from_policies for k, v in
                                                c.info.items()}
     pprint(existing_descriptions)
 
@@ -1745,7 +1781,7 @@ if __name__ == '__main__':
         interfaces_existing_conf = load(f)
     pprint(interfaces_existing_conf)
     with open('switches_configuration_policies.pickle', 'rb') as f:
-        interface_desc_policies: dict[str, list] = load(f)
+        interface_desc_policies: Dict[str, list] = load(f)
     pprint(interface_desc_policies)
     policies_ids: list = []
     for serial_number in interface_desc_policies:

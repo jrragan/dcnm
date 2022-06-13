@@ -1,13 +1,16 @@
 import argparse
 import logging
 import pathlib
-import sys
-from pickle import dump, load
+from functools import partial
+from pickle import dump
 from time import strftime, gmtime
-from typing import Union, Optional
+from typing import Union, Optional, Dict, List
 
+import yaml
+
+from DCNM_errors import DCNMFileError, DCNMValueError
+from interfaces_utilities import depickle, _file_check
 from dcnm_interfaces import DcnmInterfaces
-
 from interfaces_utilities import read_existing_descriptions, get_interfaces_to_change, push_to_dcnm, \
     deploy_to_fabric_using_interface_deploy, verify_interface_change, _dbg, deploy_to_fabric_using_switch_deploy, \
     _failed_dbg
@@ -80,7 +83,7 @@ def command_args() -> argparse.Namespace:
                              "If running backout, you should run program with all options included\n"
                              "in the original deploy.")
     parser.add_argument("-t", "--timeout", type=int, metavar="SECONDS", default=300,
-                        help="timeout in seconds of the deploy operations\n" \
+                        help="timeout in seconds of the deploy operations\n" 
                              "default is 300 seconds")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="verbose mode")
@@ -99,10 +102,6 @@ def command_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-class DCNMFileError(Exception):
-    pass
-
-
 def _read_serials_from_file(file: str):
     """
 
@@ -111,28 +110,14 @@ def _read_serials_from_file(file: str):
     :return: list of serial numbers
     :rtype: list
     """
-    file_path = pathlib.Path(file)
-    if file_path.is_file():
-        with file_path.open() as serials_file:
-            serials = [serial.strip() for serial in serials_file]
-            if serials:
-                return serials
-            logger.critical(f"Error: empty input file, {file}")
-            raise DCNMFileError(f"Error: empty input file, {file}")
-    else:
-        logger.critical("Error: input file not found")
-        raise DCNMFileError("Error: input file not found")
-    return []
-
-
-class DCNMValueError(Exception):
-    pass
+    serials = _file_check(file, as_list=True)
+    return serials
 
 
 def get_desc_changes(dcnm: DcnmInterfaces, pickle: str, excel: Optional[str] = None,
                      verbose: bool = True) -> callable:
     if not excel:
-        dcnm.get_switches_policies(templateName='switch_freeform\Z',
+        dcnm.get_switches_policies(templateName=r'switch_freeform\Z',
                                    config=r"interface\s+[a-zA-Z]+\d+/?\d*\n\s+[Dd]escription\s+")
         existing_descriptions_from_policies: list = DcnmInterfaces.get_info_from_policies_config(
             dcnm.all_switches_policies,
@@ -144,7 +129,7 @@ def get_desc_changes(dcnm: DcnmInterfaces, pickle: str, excel: Optional[str] = N
         if verbose: _dbg("deleting policy ids", policy_ids)
         # delete the policy
         dcnm.delete_switch_policies(list(policy_ids))
-        existing_descriptions: dict[tuple, str] = {k: v for c in existing_descriptions_from_policies for k, v in
+        existing_descriptions: Dict[tuple, str] = {k: v for c in existing_descriptions_from_policies for k, v in
                                                    c.info.items()}
         if verbose: _dbg("existing descriptions from switch policies", existing_descriptions)
         with open(pickle, 'wb') as f:
@@ -180,7 +165,7 @@ def get_cdp_change(interface: tuple, detail: dict, mgmt: bool = True) -> bool:
         logger.debug("interface: {}, changing cdp".format(interface))
         logger.debug("CDP_ENABLE: {}".format(detail['interfaces'][0]['nvPairs']['CDP_ENABLE']))
         return True
-    # it it's a leaf switch and and ethernet interface and not a fabric interface and cdp is enabled
+    # if it's a leaf switch and and ethernet interface and not a fabric interface and cdp is enabled
     elif interface[1] in dcnm.all_leaf_switches and 'ethernet' in interface[0].lower() \
             and 'fabric' not in detail['policy'] \
             and 'no cdp enable' not in detail['interfaces'][0]['nvPairs']['CONF']:
@@ -200,33 +185,28 @@ def get_cdp_change(interface: tuple, detail: dict, mgmt: bool = True) -> bool:
     return False
 
 
-def get_orphanport_change(dcnm: DcnmInterfaces, uplinks: Optional[dict] = None,
+def get_orphanport_change(dcnm: DcnmInterfaces, uplinks_file: str,
                           serials: Optional[list] = None) -> callable:
     if not dcnm.all_switches_details:
         dcnm.get_switches_details(serial_numbers=serials)
     local_switches_details = dcnm.all_switches_details
-    local_uplinks: dict[str, list] = {}
-    for model in uplinks:
-        first = uplinks[model][0]
-        last = uplinks[model][1]
-        interface_range = range(int(first.split('/')[1]), int(last.split('/')[1]) + 1)
-        local_uplinks[model] = [f'Ethernet{first.split("/")[0]}/{i}' for i in interface_range]
+    local_uplinks: Dict = _get_uplinks(uplinks_file)
     logger.debug("get_orphanport_change: local_uplinks: {}".format(local_uplinks))
 
     def orphan_port(interface: tuple, detail: dict) -> bool:
         logger.debug("start get_orphanport_change: interface {}".format(interface))
         logger.debug("detail: {}".format(detail))
-        #get uplinks
+        # get uplinks
         model = local_switches_details[interface[1]]['model']
         logger.debug("orphan_port: model: {}".format(model))
-        this_model_uplinks: list = [local_uplinks[m] for m in uplinks if m in model][0]
+        this_model_uplinks: list = [local_uplinks[m] for m in local_uplinks if m in model][0]
         if not this_model_uplinks:
             _failed_dbg('orphan_port: No uplink data for model {}'.format(model), ('No uplink data for model', model))
             raise DCNMValueError('No uplink data for model {}'.format(model))
         logger.debug("orphan_port: this_model_uplinks: {}".format(this_model_uplinks))
         # if not a mgmt interface and either a trunk host or access_host interface
         if 'mgmt' not in interface[0] and \
-                interface[0] not in this_model_uplinks and\
+                interface[0] not in this_model_uplinks and \
                 ('int_trunk_host' in detail['policy'] or 'int_access_host' in detail['policy']) and \
                 'vpc orphan-port enable' not in detail['interfaces'][0]['nvPairs']['CONF']:
             if not detail['interfaces'][0]['nvPairs']['CONF']:
@@ -243,7 +223,20 @@ def get_orphanport_change(dcnm: DcnmInterfaces, uplinks: Optional[dict] = None,
                 logger.debug("orphan port multiple CONF: {}".format(detail['interfaces'][0]['nvPairs']['CONF']))
                 return True
         return False
+
     return orphan_port
+
+
+def _get_uplinks(uplinks_file):
+    yaml_loader = partial(yaml.load, Loader=yaml.FullLoader)
+    uplinks = _file_check(uplinks_file, loader=yaml_loader)
+    local_uplinks: Dict[str, list] = {}
+    for model in uplinks:
+        first = uplinks[model][0]
+        last = uplinks[model][1]
+        interface_range = range(int(first.split('/')[1]), int(last.split('/')[1]) + 1)
+        local_uplinks[model] = [f'Ethernet{first.split("/")[0]}/{i}' for i in interface_range]
+    return local_uplinks
 
 
 def _normal_deploy(args: argparse.Namespace, dcnm: DcnmInterfaces):
@@ -273,7 +266,7 @@ def _normal_deploy(args: argparse.Namespace, dcnm: DcnmInterfaces):
         _dbg("number of leaf switches", len(dcnm.all_leaf_switches.keys()))
         _dbg("leaf switches", dcnm.all_leaf_switches.keys())
     policy_ids: Union[set, list, None] = None
-    changes_to_make: list[tuple] = []
+    changes_to_make: List[tuple] = []
     if args.description:
         _dbg("Adding Description Changes")
         changes_to_make.append(
@@ -283,8 +276,8 @@ def _normal_deploy(args: argparse.Namespace, dcnm: DcnmInterfaces):
         changes_to_make.append((get_cdp_change, {'mgmt': args.mgmt}, False))
     if args.orphan:
         _dbg("Adding Enabling of Orphan Ports")
-        changes_to_make.append((get_orphanport_change(dcnm, uplinks={'9336C-FX2': ('1/29', '1/36'),
-           '93240YC-FX2': ('1/49', '1/60')}, serials=serials), None, True))
+        changes_to_make.append((get_orphanport_change(dcnm, uplinks_file='uplinks.yaml', serials=serials),
+                                None, True))
     interfaces_will_change, interfaces_existing_conf = get_interfaces_to_change(dcnm, changes_to_make)
     with open(args.icpickle, 'wb') as f:
         dump(interfaces_existing_conf, f)
@@ -353,12 +346,12 @@ def _fallback(args: argparse.Namespace, dcnm: DcnmInterfaces):
             _dbg("number of leaf switches", len(dcnm.all_leaf_switches.keys()))
             _dbg("leaf switches", dcnm.all_leaf_switches.keys())
 
-    interfaces_existing_conf = depickle(args.icpickle, args.verbose)
+    interfaces_existing_conf = depickle(args.icpickle)
     if args.verbose: _dbg("these interface configs will be restored", interfaces_existing_conf)
 
     policy_ids: Union[list, None] = None
     if args.description and not args.excel:
-        interface_desc_policies: dict[str, list] = depickle(args.pickle, args.verbose)
+        interface_desc_policies: Dict[str, list] = depickle(args.pickle)
         policy_ids: set = set()
         for serial_number in interface_desc_policies:
             for policy in interface_desc_policies[serial_number]:
@@ -367,19 +360,6 @@ def _fallback(args: argparse.Namespace, dcnm: DcnmInterfaces):
         policy_ids: list = list(policy_ids)
         if args.verbose: _dbg("these switch policies will be restored", interface_desc_policies)
     _deploy_stub(args, dcnm, interfaces_existing_conf, policy_ids, serials)
-
-
-def depickle(pickle_file: str, verbose: bool):
-    file_path = pathlib.Path(pickle_file)
-    if file_path.is_file():
-        with open(pickle_file, 'rb') as f:
-            depickle_conf = load(f)
-    else:
-        logger.critical("Error: pickle file {} not found".format(pickle_file))
-        _failed_dbg("Error: pickle file {} not found".format(pickle_file),
-                    ("Pickle file containing original interface configs not found", pickle_file))
-        raise DCNMFileError("Error: input file {} not found".format(pickle_file))
-    return depickle_conf
 
 
 if __name__ == '__main__':
@@ -396,13 +376,13 @@ if __name__ == '__main__':
     print(SCREENLOGLEVEL)
 
     logging.basicConfig(level=SCREENLOGLEVEL,
-                        format='%(asctime)s: %(process)d - %(threadName)s - (%(filename)s:%(lineno)d) - %(funcName)s - %(levelname)s - message: %(message)s')
+                        format='%(asctime)s | %(process)d | %(threadName)s | (%(filename)s:%(lineno)d) | %(funcName)s | %(levelname)s | message: %(message)s')
 
     # set up file logging
     if args.loglevel is not None or args.loglevel == 'NONE':
         LOGFILE = "dcnm_interfaces" + strftime("_%y%m%d%H%M%S", gmtime()) + ".log"
         logformat = logging.Formatter(
-            '%(asctime)s: %(process)d - %(threadName)s - (%(filename)s:%(lineno)d) - %(funcName)s - %(levelname)s - message: %(message)s')
+            '%(asctime)s | %(process)d | %(threadName)s | (%(filename)s:%(lineno)d) | %(funcName)s | %(levelname)s | message: %(message)s')
         if args.debug:
             FILELOGLEVEL = logging.DEBUG
         else:

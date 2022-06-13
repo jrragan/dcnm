@@ -7,37 +7,14 @@ from pprint import pprint
 import requests
 from requests.adapters import HTTPAdapter
 from requests.auth import HTTPBasicAuth
-from urllib3 import Retry
+from urllib3 import Retry, disable_warnings
+from urllib3.exceptions import InsecureRequestWarning
 
-from dcnm_utils import iteritems
+from DCNM_errors import DCNMConnectionError, AuthenticationError, DCNMUnauthorizedError
 
 logger = logging.getLogger('dcnm_connect')
 
-requests.packages.urllib3.disable_warnings(requests.packages.urllib3.exceptions.InsecureRequestWarning)
-
-
-class ConnectionError(Exception):
-
-    def __init__(self, message, *args, **kwargs):
-        super(ConnectionError, self).__init__(message)
-        for k, v in iteritems(kwargs):
-            setattr(self, k, v)
-
-
-class AuthenticationError(Exception):
-
-    def __init__(self, message, *args, **kwargs):
-        super(AuthenticationError, self).__init__(message)
-        for k, v in iteritems(kwargs):
-            setattr(self, k, v)
-
-
-class DCNMUnauthorizedError(Exception):
-
-    def __init__(self, message, *args, **kwargs):
-        super(DCNMUnauthorizedError, self).__init__(message)
-        for k, v in iteritems(kwargs):
-            setattr(self, k, v)
+disable_warnings(InsecureRequestWarning)
 
 
 class HttpApi:
@@ -73,10 +50,10 @@ class HttpApi:
         self.dryrun = dryrun
 
     def login(self, username=None, password=None):
-        ''' DCNM Login Method.  This method is automatically called by the
+        """ DCNM Login Method.  This method is automatically called by the
             Ansible plugin architecture if an active Dcnm-Token is not already
             available.
-        '''
+        """
 
         path = "/logon"
         data = "{'expirationTime': %s}" % self.login_expiration_time
@@ -102,9 +79,9 @@ class HttpApi:
                     continue
                 else:
                     break
-            info = self._verify_response(response, "POST", path, [(400, "Invalid value supplied for expiration time"),
-                                                                  (500,
-                                                                   "Invalid credentials. Failed to perform logon.")])
+            info = self._verify_response(response, "POST", [(400, "Invalid value supplied for expiration time"),
+                                                            (500,
+                                                             "Invalid credentials. Failed to perform logon.")])
         except Exception as e:
             exc_type, exc_value, exc_traceback = sys.exc_info()
             stacktrace = traceback.extract_tb(exc_traceback)
@@ -125,10 +102,10 @@ class HttpApi:
         try:
             response = self.connection.post(self.device + path, headers=self.headers, timeout=self.timeout,
                                             verify=self.verify)
-            info = self._verify_response(response, "POST", path, [(400, "Invalid value supplied for Dcnm-Token"),
-                                                                  (401, "Unauthorized access to API"),
-                                                                  (500,
-                                                                   "Invalid token. Failed to perform logout.")],
+            info = self._verify_response(response, "POST", [(400, "Invalid value supplied for Dcnm-Token"),
+                                                            (401, "Unauthorized access to API"),
+                                                            (500,
+                                                             "Invalid token. Failed to perform logout.")],
                                          skip_authcheck=True)
             logger.debug("logout: response: {}".format(info))
             if self._auth: del (self.headers["Dcnm-Token"])
@@ -140,12 +117,12 @@ class HttpApi:
             logger.debug(sys.exc_info())
             logger.debug(stacktrace)
             msg = "Error on attempt to logout from DCNM controller: {}".format(e)
-            raise ConnectionError(self._return_info(None, method, path, msg))
+            raise DCNMConnectionError(self._return_info(None, method, path, msg))
         finally:
             # Clean up tokens
             self._auth = False
 
-    def check_url_connection(self, headers):
+    def check_url_connection(self):
         # Verify HTTPS request URL for DCNM controller is accessible
         info = {"msg": " "}
         try:
@@ -156,12 +133,11 @@ class HttpApi:
                 del (self.headers["Dcnm-Token"])
                 self.login()
                 response = self.connection.head(self.physical, verify=False, timeout=self.timeout)
-            info = self._verify_response(response, "HEAD", self.physical)
+            info = self._verify_response(response, "HEAD")
             logger.debug("check_url_connection: info: {}".format(info))
         except requests.exceptions.RequestException as e:
             msg = """
-                  Please verify that the DCNM controller HTTPS URL ({}) is
-                  reachable from the Ansible controller and try again
+                  Please verify that the DCNM controller HTTPS URL ({}) is and try again
                   """.format(self.physical)
             logger.debug(str(e) + msg)
             raise
@@ -173,14 +149,14 @@ class HttpApi:
             logger.debug(sys.exc_info())
             logger.debug(stacktrace)
             msg = "Error checking URL on DCNM controller: {}".format(e)
-            raise ConnectionError(self._return_info(None, "HEAD", self.physical, msg))
+            raise DCNMConnectionError(self._return_info(None, "HEAD", self.physical, msg))
 
     def get(self, path, headers=None, data=None, errors=None, data_type="json", **kwargs):
         info = self.send_request('get', path, headers=headers, data=data, errors=errors, data_type=data_type, **kwargs)
         return info
 
     def post(self, path, headers=None, data=None, errors=None, data_type="json", **kwargs):
-        info = self.send_request('post', path, headers=headers, data=data, errors=errors, **kwargs)
+        info = self.send_request('post', path, headers=headers, data=data, errors=errors, data_type=data_type, **kwargs)
         return info
 
     def put(self, path, headers=None, data=None, errors=None, data_type="json", **kwargs):
@@ -193,7 +169,7 @@ class HttpApi:
         return info
 
     def send_request(self, method, path, headers=None, data=None, errors=None, data_type="json", **kwargs):
-        ''' This method handles all DCNM REST API requests other then login '''
+        """ This method handles all DCNM REST API requests other than login """
 
         if data_type == "json" and data is None:
             data = {}
@@ -210,7 +186,7 @@ class HttpApi:
         path = str(path)
         if path[0] != "/":
             msg = "Value of <path> does not appear to be formatted properly"
-            raise ConnectionError(self._return_info(None, method, path, msg))
+            raise DCNMConnectionError(self._return_info(None, method, path, msg))
 
         url = self.device + path
         logger.debug(
@@ -218,7 +194,7 @@ class HttpApi:
         if self.dryrun and method in {'post', 'put', 'delete'}:
             logger.debug("Dryrun enabled. Returning OK code for this send_request")
             return {"RETURN_CODE": 200}
-        self.check_url_connection(local_headers)
+        self.check_url_connection()
         info = {}
 
         try:
@@ -243,7 +219,7 @@ class HttpApi:
                         break
                 else:
                     break
-            info = self._verify_response(response, method, path, errors)
+            info = self._verify_response(response, method, errors)
             logger.debug("send_request: returning info {}".format(info))
         except Exception as e:
             eargs = e.args[0]
@@ -256,18 +232,18 @@ class HttpApi:
             if isinstance(eargs, dict) and eargs.get("METHOD"):
                 return eargs
             logger.debug("Failure: send_request: {}".format(str(e)))
-            raise ConnectionError(str(e))
+            raise DCNMConnectionError(str(e))
         return info
 
-    def _verify_response(self, response, method, path, errors=None, skip_authcheck=False):
-        ''' Process the return code and response object from DCNM '''
+    def _verify_response(self, response, method, errors=None, skip_authcheck=False):
+        """ Process the return code and response object from DCNM """
 
         msg = response.text
         jrd = self._response_to_json(response)
         rc = response.status_code
         path = response.url
 
-        if rc >= 200 and rc <= 299:
+        if 200 <= rc <= 299:
             return self._return_info(rc, method, path, msg, jrd)
         if rc >= 400:
             # Add future error code processing here
@@ -282,25 +258,22 @@ class HttpApi:
                         msg = err_msg
         else:
             msg = "RETURN_CODE: {}".format(rc)
-        raise ConnectionError(self._return_info(rc, method, path, msg, jrd))
+        raise DCNMConnectionError(self._return_info(rc, method, path, msg, jrd))
 
-    def _response_to_json(self, response):
-        ''' Convert response_text to json format '''
+    @staticmethod
+    def _response_to_json(response):
+        """ Convert response_text to json format """
         try:
             return response.json() if response.text else {}
         # JSONDecodeError only available on Python 3.5+
         except ValueError:
             return 'Invalid JSON response: {}'.format(response.text)
 
-    def _return_info(self, rc, method, path, msg, json_respond_data=None):
-        ''' Format success/error data and return with consistent format '''
+    @staticmethod
+    def _return_info(rc, method, path, msg, json_respond_data=None):
+        """ Format success/error data and return with consistent format """
 
-        info = {}
-        info['RETURN_CODE'] = rc
-        info['METHOD'] = method
-        info['REQUEST_PATH'] = path
-        info['MESSAGE'] = msg
-        info['DATA'] = json_respond_data
+        info = {'RETURN_CODE': rc, 'METHOD': method, 'REQUEST_PATH': path, 'MESSAGE': msg, 'DATA': json_respond_data}
 
         logger.debug("_return_info: {}".format(info))
         return info

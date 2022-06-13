@@ -1,19 +1,22 @@
 import logging
+import pathlib
+import sys
+import traceback
 from copy import deepcopy
+from functools import partial
+from pickle import load
 from pprint import pprint
-from typing import Callable, Optional, Union
+from typing import Callable, Optional, Union, Dict, List, Tuple
 
 import pandas
 from colorama import init, Back, Fore, Style
 from pandas import read_excel
 
 from DCNM_errors import DCNMPolicyDeployError
+from DCNM_errors import ExcelFileError, DCNMFileError
 from dcnm_interfaces import DcnmInterfaces
 
 logger = logging.getLogger('interfaces_utilities')
-
-class ExcelFileError(Exception):
-    pass
 
 
 def _dbg(header: str, data=None):
@@ -28,36 +31,37 @@ def _dbg(header: str, data=None):
     print()
 
 
-def read_existing_descriptions(file: str) -> dict[tuple, str]:
+def read_existing_descriptions(file: str) -> Dict[tuple, str]:
     """
 
-    :param file: an excel file path/name containing columns "interface", "switch" and "description"
+    :param file: an Excel file path/name containing columns "interface", "switch" and "description"
     the switch column is the switch serial number
     :type file: str
     :return: dictionary
     :rtype: dict[tuple, str]
 
-    Read in an excel file and return a dictionary of form {(interface, switch_serial_number): interface_description}
+    Read in an Excel file and return a dictionary of form {(interface, switch_serial_number): interface_description}
     """
-    existing_descriptions_local: dict
-    logger.debug("reading excel file {}".format(file))
-    df: pandas.DataFrame = read_excel(file)
-    df.columns = df.columns.str.lower()
-    if 'description' not in df.columns or 'interface' not in df.columns or 'switch' not in df.columns:
-        logger.debug("Columns missing. {}".format(df.columns))
-        raise ExcelFileError('One or more columns missing')
-    existing_descriptions_local = df.to_dict('records')
-    # print(existing_descriptions)
-    existing_descriptions_local = {(interface['interface'], interface['switch']): interface['description'] for interface
-                                   in
-                                   existing_descriptions_local}
-    logger.debug("read_existing_descriptions: existing descriptions: {}".format(existing_descriptions_local))
-    return existing_descriptions_local
+    if _file_check(file, skip_load=True):
+        existing_descriptions_local: dict
+        logger.debug("reading excel file {}".format(file))
+        df: pandas.DataFrame = read_excel(file)
+        df.columns = df.columns.str.lower()
+        if 'description' not in df.columns or 'interface' not in df.columns or 'switch' not in df.columns:
+            logger.debug("Columns missing. {}".format(df.columns))
+            raise ExcelFileError('One or more columns missing')
+        existing_descriptions_local = df.to_dict('records')
+        # print(existing_descriptions)
+        existing_descriptions_local = {(interface['interface'], interface['switch']): interface['description'] for interface
+                                       in
+                                       existing_descriptions_local}
+        logger.debug("read_existing_descriptions: existing descriptions: {}".format(existing_descriptions_local))
+        return existing_descriptions_local
 
 
 def get_interfaces_to_change(dcnm: DcnmInterfaces,
-                             change_functions: list[tuple[Callable, Optional[dict], bool]]) -> tuple[
-    dict[tuple, dict], dict[tuple, dict]]:
+                             change_functions: List[Tuple[Callable, Optional[dict], bool]]) -> Tuple[
+                              Dict[tuple, dict], Dict[tuple, dict]]:
     """
 
     :param dcnm: dcnm object
@@ -76,8 +80,8 @@ def get_interfaces_to_change(dcnm: DcnmInterfaces,
     is the original dictionary of policies
     """
     existing_interfaces = deepcopy(dcnm.all_interfaces_nvpairs)
-    interfaces_to_change: dict[tuple, dict] = {}
-    interfaces_original: dict[tuple, dict] = {}
+    interfaces_to_change: Dict[tuple, dict] = {}
+    interfaces_original: Dict[tuple, dict] = {}
     for interface, details in existing_interfaces.items():
         change: bool = False
         # print(details)
@@ -108,7 +112,8 @@ def _run_functions(change_functions, details, interface, leaf=True):
     """
     change = False
     for function in change_functions:
-        #if the function is to run only on leaf switches and this is a leaf switch or the function can run on any switch
+        # if the function is to run only on leaf switches and this is a leaf switch
+        # or the function can run on any switch
         if (function[2] and leaf) or not function[2]:
             if function[1]:
                 logger.debug("_run_functions: sending {} to function {}".format(interface, function))
@@ -134,7 +139,7 @@ def verify_interface_change(dcnm: DcnmInterfaces, interfaces_will_change: dict, 
     interfaces_will_change_local = deepcopy(interfaces_will_change)
     all_interfaces_nv_pairs_local = deepcopy(dcnm.all_interfaces_nvpairs)
     for interface in interfaces_will_change:
-        #priority changes, so remove from comparison
+        # priority changes, so remove from comparison
         interfaces_will_change_local[interface]['interfaces'][0]['nvPairs'].pop('PRIORITY', None)
         interfaces_will_change_local[interface]['interfaces'][0]['nvPairs'].pop('FABRIC_NAME', None)
         all_interfaces_nv_pairs_local[interface]['interfaces'][0]['nvPairs'].pop('PRIORITY', None)
@@ -222,8 +227,8 @@ def deploy_to_fabric_using_switch_deploy(dcnm: DcnmInterfaces, serial_numbers: O
     if serial_numbers is None:
         if not (dcnm.all_leaf_switches or dcnm.all_notleaf_switches):
             raise DCNMPolicyDeployError("serial numbers must be either a string or a list\n"
-                                    "alternatively, the get_all_switches or get_switches_by_serial_number\n"
-                                    "must be called before using this function")
+                                        "alternatively, the get_all_switches or get_switches_by_serial_number\n"
+                                        "must be called before using this function")
         else:
             serial_numbers = list(dcnm.all_leaf_switches.keys()) + list(dcnm.all_notleaf_switches.keys())
     logger.debug("deploy_to_fabric_using_switch_deploy: deploying: serial numbers: {}".format(serial_numbers))
@@ -243,9 +248,9 @@ def deploy_to_fabric_using_switch_deploy(dcnm: DcnmInterfaces, serial_numbers: O
         deployed.add(serial_number)
         if len(reduced_serial_numbers) > 1 and serial_number in dcnm.all_switches_vpc_pairs \
                 and dcnm.all_switches_vpc_pairs[serial_number] is not None:
-                deployed.add(dcnm.all_switches_vpc_pairs[serial_number])
-    logger.debug("Deployed or attemped to deploy the following: {}".format(deployed))
-    if verbose: _dbg("Deployed or attemped to deploy the following: ", deployed)
+            deployed.add(dcnm.all_switches_vpc_pairs[serial_number])
+    logger.debug("Deployed or attempted to deploy the following: {}".format(deployed))
+    if verbose: _dbg("Deployed or attempted to deploy the following: ", deployed)
     logger.info('waiting for switches status')
     if verbose: _dbg('waiting for switches status')
     result = dcnm.wait_for_switches_status(serial_numbers=serial_numbers, timeout=deploy_timeout)
@@ -277,3 +282,40 @@ def _failed_dbg(log_msg: str, messages: tuple):
     print(Style.RESET_ALL)
 
 
+def depickle(pickle_file: str):
+    depickle_conf = _file_check(pickle_file, loader=load, type='rb')
+    return depickle_conf
+
+
+def _file_check(file, loader=None, skip_load=False, as_list=False, type='r'):
+    file_path = pathlib.Path(file)
+    if file_path.is_file():
+        if not skip_load:
+            try:
+                with open(file, type) as f:
+                    if loader is not None:
+                        contents = loader(f)
+                    else:
+                        if as_list:
+                            contents = [item.strip() for item in f]
+                        else:
+                            contents = f.read()
+            except:
+                exc_type, exc_value, exc_traceback = sys.exc_info()
+                stacktrace = traceback.extract_tb(exc_traceback)
+                logger.debug(
+                    "_file_check: file error {}".format(exc_type))
+                logger.debug(sys.exc_info())
+                logger.debug(stacktrace)
+                raise
+            if contents:
+                return contents
+            logger.critical(f"Error: empty input file, {file}")
+            raise DCNMFileError(f"Error: empty input file, {file}")
+        else:
+            return True
+    else:
+        logger.critical("Error: file {} not found".format(file))
+        _failed_dbg("Error: File {} not found".format(file),
+                    ("File not found", file))
+        raise DCNMFileError("Error: input file {} not found".format(file))
