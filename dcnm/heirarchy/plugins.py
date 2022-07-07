@@ -11,17 +11,18 @@ from plugin_utils import PlugIn, RegisterPlugin
 
 logger = logging.getLogger(__name__)
 
+
 @RegisterPlugin(name="desc")
 class GetDescChanges(PlugIn):
     def initialize(self, handler: Handler, args: argparse.Namespace,
-                          serials: Optional[list] = None) -> None:
+                   serials: Optional[list] = None) -> None:
         self.handler = handler
         self.leaf_only = False
         if not args.excel:
             self.handler.get_switches_policies(templateName=r'switch_freeform\Z',
-                                       config=r"interface\s+[a-zA-Z]+\d+/?\d*\n\s+[Dd]escription\s+")
+                                               generatedConfig=r"interface\s+[a-zA-Z]+\d+/?\d*\n\s+[Dd]escription\s+")
             existing_descriptions_from_policies: list = get_info_from_policies_config(
-                {serial_number : switch.policies for serial_number, switch in self.handler.switches.items()},
+                {serial_number: switch.policies for serial_number, switch in self.handler.switches.items()},
                 r"interface\s+([a-zA-Z]+\d+/?\d*)\n\s+[dD]escription\s+(.*)")
             if args.verbose:
                 _dbg("existing description from policies", existing_descriptions_from_policies)
@@ -30,8 +31,9 @@ class GetDescChanges(PlugIn):
                 _dbg("deleting policy ids", policy_ids)
             # delete the policy
             self.handler.delete_switch_policies(list(policy_ids))
-            self.existing_descriptions: Dict[tuple, str] = {k: v for c in existing_descriptions_from_policies for k, v in
-                                                       c.info.items()}
+            self.existing_descriptions: Dict[tuple, str] = {k: v for c in existing_descriptions_from_policies for k, v
+                                                            in
+                                                            c.info.items()}
             if args.verbose:
                 _dbg("existing descriptions from switch policies", self.existing_descriptions)
             with open(args.pickle, 'wb') as f:
@@ -59,12 +61,13 @@ class GetDescChanges(PlugIn):
 
 class GetCdpChange(PlugIn):
     def initialize(self, handler: Handler, args: argparse.Namespace,
-                          serials: Optional[list] = None) -> None:
+                   serials: Optional[list] = None) -> None:
         self.args = args
         self.handler = handler
         self.all_leaf_switches = handler.all_leaf_switches
         self.mgmt = args.mgmt
         self.leaf_only = False
+
     def __call__(self, interface: tuple, detail: dict) -> bool:
         logger.debug("start get_cdp_change: interface {}".format(interface))
         logger.debug("detail: {}".format(detail))
@@ -96,7 +99,7 @@ class GetCdpChange(PlugIn):
 
 class GetOrphanportChange(PlugIn):
     def initialize(self, handler: Handler, args: argparse.Namespace,
-                          serials: Optional[list] = None) -> None:
+                   serials: Optional[list] = None) -> None:
         if not handler.all_switches_details:
             handler.get_switches_details(serial_numbers=serials)
         self.local_switches_details = handler.all_switches_details
@@ -134,4 +137,3 @@ class GetOrphanportChange(PlugIn):
                 logger.debug("orphan port multiple CONF: {}".format(detail['interfaces'][0]['nvPairs']['CONF']))
                 return True
         return False
-

@@ -24,6 +24,7 @@ class RegisterPlugin:
         self.alt_name = name
 
     def __call__(self, plugin_class):
+        functools.update_wrapper(self, plugin_class)
         plugin_class.alt_name = self.alt_name
         return plugin_class
 
@@ -102,6 +103,7 @@ class PlugInEngine:
 
     def set_plugins(self, plugins: List):
         self._selected_plugins = {plugin for plugin in plugins if plugin in self.plugins.keys()}
+        print(self._selected_plugins)
 
     @property
     def selected_plugins(self):

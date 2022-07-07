@@ -188,7 +188,7 @@ class ChangeDcnmPolicy(DcnmComponent, metaclass=Singleton):
         path = '/control/policies'
         logger.info("post new policy to dcnm")
         logger.debug("post_new_policy: details: {}".format(details))
-        info = self._check_action_response(self.post(path, data=details, errors=[
+        info = _check_action_response(self.dcnm.post(path, data=details, errors=[
             (500, "Invalid payload or any other internal server error")]), "post_new_policy",
                                            "CREATION OF POLICY", details)
         return info
@@ -199,7 +199,7 @@ class ChangeDcnmPolicy(DcnmComponent, metaclass=Singleton):
             path: str = f'/control/policies/{policyId}'
         elif isinstance(policyId, (list, tuple)):
             path: str = f'/control/policies/policyIds?policyIds={",".join(policyId)}'
-        info = self._check_action_response(self.delete(path, errors=[
+        info = _check_action_response(self.dcnm.delete(path, errors=[
             (500, "Invalid payload or any other internal server error (e.g. policy does not exist)")]),
                                            "delete_switch_policies", "DELETE OF", policyId)
         return info

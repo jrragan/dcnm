@@ -110,14 +110,14 @@ def get_interfaces_to_change(handler: Handler,
     return interfaces_to_change, interfaces_original
 
 
-def verify_interface_change(dcnm: DcnmInterfaces, interfaces_will_change: dict, verbose: bool = True, **kwargs):
-    dcnm.get_interfaces_nvpairs(save_prev=True, **kwargs)
+def verify_interface_change(handler: Handler, interfaces_will_change: dict, verbose: bool = True, **kwargs):
+    handler.get_interfaces_nvpairs(save_prev=True, **kwargs)
     failed: set = set()
     success: set = set()
     if verbose:
         _dbg("Verifying Interface Configurations")
     interfaces_will_change_local = deepcopy(interfaces_will_change)
-    all_interfaces_nv_pairs_local = deepcopy(dcnm.all_interfaces_nvpairs)
+    all_interfaces_nv_pairs_local = deepcopy(handler.all_interfaces_nvpairs)
     for interface in interfaces_will_change:
         # priority changes, so remove from comparison
         interfaces_will_change_local[interface]['interfaces'][0]['nvPairs'].pop('PRIORITY', None)
@@ -131,7 +131,7 @@ def verify_interface_change(dcnm: DcnmInterfaces, interfaces_will_change: dict, 
         else:
             logger.critical("Verification failed for interface {}".format(interface))
             logger.critical("Desired configuration: {}".format(interfaces_will_change[interface]))
-            logger.critical("Configuration pulled from DCNM: {}".format(dcnm.all_interfaces_nvpairs[interface]))
+            logger.critical("Configuration pulled from DCNM: {}".format(handler.all_interfaces_nvpairs[interface]))
             failed.add(interface)
     if failed:
         if failed:
@@ -144,13 +144,13 @@ def verify_interface_change(dcnm: DcnmInterfaces, interfaces_will_change: dict, 
     # return success, failed
 
 
-def push_to_dcnm(dcnm: ChangeDcnmPolicy, interfaces_to_change: dict, verbose: bool = True) -> set:
+def push_to_dcnm(handler: Handler, interfaces_to_change: dict, verbose: bool = True) -> set:
     # make changes
     success: set
     failure: set
     if verbose:
         _dbg("Putting changes to dcnm")
-    success, failure = dcnm.put_interface_changes(interfaces_to_change)
+    success, failure = handler.put_interface_changes(interfaces_to_change)
     if failure:
         _failed_dbg("Failed putting to DCNM for the following: {}".format(failure),
                     ("Failed pushing config changes to DCNM for the following switches:", failure))
@@ -180,7 +180,7 @@ def create_deploy_list(deploy_list: Union[Set[tuple], List[tuple], Tuple[tuple]]
     return new_deploy_list
 
 
-def deploy_to_fabric_using_interface_deploy(dcnm: DeployDcnmPolicy, deploy,
+def deploy_to_fabric_using_interface_deploy(handler: Handler, deploy,
                                             policies: Optional[Union[list, tuple, str]] = None,
                                             deploy_timeout: int = 300,
                                             fallback: bool = False,
@@ -188,7 +188,7 @@ def deploy_to_fabric_using_interface_deploy(dcnm: DeployDcnmPolicy, deploy,
     deploy_list: list = create_deploy_list(deploy)
     if verbose:
         _dbg('Deploying changes to switches')
-    if dcnm.deploy_interfaces(deploy_list, deploy_timeout=deploy_timeout):
+    if handler.deploy_interfaces(deploy_list, deploy_timeout=deploy_timeout):
         logger.debug('successfully deployed to {}'.format(deploy))
         if verbose:
             _dbg('!!Successfully Deployed Config Changes to Switches!!', deploy)
@@ -199,7 +199,7 @@ def deploy_to_fabric_using_interface_deploy(dcnm: DeployDcnmPolicy, deploy,
     print('=' * 40)
     print('=' * 40)
     if policies and fallback:
-        fallback_policy_deploy(dcnm, policies, deploy_timeout=deploy_timeout, verbose=verbose)
+        fallback_policy_deploy(handler, policies, deploy_timeout=deploy_timeout, verbose=verbose)
     print()
     print('=' * 40)
     print('=' * 40)
@@ -207,13 +207,13 @@ def deploy_to_fabric_using_interface_deploy(dcnm: DeployDcnmPolicy, deploy,
     print('=' * 40)
 
 
-def fallback_policy_deploy(dcnm: DeployDcnmPolicy,
+def fallback_policy_deploy(handler: Handler,
                            policies: Union[list, tuple, str], deploy_timeout: int = 300, verbose: bool = True):
     if isinstance(policies, str):
         policies = [policies]
     if verbose:
         _dbg("DEPLOYING POLICIES: ", policies)
-    if dcnm.deploy_policies(policies, deploy_timeout=deploy_timeout):
+    if handler.deploy_policies(policies, deploy_timeout=deploy_timeout):
         logger.debug('successfully deployed policies {}'.format(policies))
         if verbose:
             _dbg('!!Successfully Deployed Config Policies to Switches!!', policies)
@@ -222,7 +222,7 @@ def fallback_policy_deploy(dcnm: DeployDcnmPolicy,
                     ('Failed deploying the following policies:', policies))
 
 
-def deploy_to_fabric_using_switch_deploy(dcnm: DeployDcnmPolicy, switches: DcnmSwitches,
+def deploy_to_fabric_using_switch_deploy(handler: Handler,
                                          serial_numbers: Optional[Union[str, list, tuple]] = None,
                                          deploy_timeout: int = 300,
                                          verbose: bool = True):
@@ -233,21 +233,21 @@ def deploy_to_fabric_using_switch_deploy(dcnm: DeployDcnmPolicy, switches: DcnmS
     if isinstance(serial_numbers, str):
         serial_numbers = [serial_numbers]
     elif serial_numbers is None:
-        if not (switches.all_leaf_switches or switches.all_notleaf_switches):
+        if not (handler.all_leaf_switches or handler.all_notleaf_switches):
             raise DCNMPolicyDeployError("serial numbers must be either a string or a list\n"
                                         "alternatively, the get_all_switches or get_switches_by_serial_number\n"
                                         "must be called before using this function")
         else:
-            serial_numbers = switches.all_leaf_switches + switches.all_notleaf_switches
+            serial_numbers = handler.all_leaf_switches + handler.all_notleaf_switches
     logger.debug("deploy_to_fabric_using_switch_deploy: deploying: serial numbers: {}".format(serial_numbers))
     reduced_serial_numbers = serial_numbers.copy()
     if len(reduced_serial_numbers) > 1:
-        if not dcnm.all_switches_vpc_pairs:
-            switches.get_switches_vpc_pairs()
+        if not handler.all_switches_vpc_pairs:
+            handler.get_switches_vpc_pairs()
     for serial_number in reduced_serial_numbers:
         if serial_number in deployed:
             continue
-        if dcnm.deploy_switch_config(serial_number):
+        if handler.deploy_switch_config(serial_number):
             logger.debug('deploy returned successfully')
             if verbose:
                 _dbg('deploy returned successfully for: ', serial_number)
@@ -255,16 +255,16 @@ def deploy_to_fabric_using_switch_deploy(dcnm: DeployDcnmPolicy, switches: DcnmS
             _failed_dbg("Failed deploying config to switch {}".format(serial_number),
                         ("Failed deploying configs to the following switch:", serial_number))
         deployed.add(serial_number)
-        if len(reduced_serial_numbers) > 1 and serial_number in switches.switches \
-                and switches.switches[serial_number].peerSerialNumber is not None:
-            deployed.add(switches.switches[serial_number].peerSerialNumber)
+        if len(reduced_serial_numbers) > 1 and serial_number in handler.switches \
+                and handler.switches[serial_number].peerSerialNumber is not None:
+            deployed.add(handler.switches[serial_number].peerSerialNumber)
     logger.debug("Deployed or attempted to deploy the following: {}".format(deployed))
     if verbose:
         _dbg("Deployed or attempted to deploy the following: ", deployed)
     logger.info('waiting for switches status')
     if verbose:
         _dbg('waiting for switches status')
-    result = switches.wait_for_switches_status(serial_numbers=serial_numbers, timeout=deploy_timeout)
+    result = handler.wait_for_switches_status(serial_numbers=serial_numbers, timeout=deploy_timeout)
     if isinstance(result, bool):
         logger.debug('successfully deployed config to switch {}'.format(serial_numbers))
         if verbose:

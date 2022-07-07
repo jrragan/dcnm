@@ -6,7 +6,7 @@ from typing import Dict, Optional, Union, List, Tuple
 from DCNM_errors import DCNMParameterError, DCNMInterfacesParameterError
 from filters import filterfactory
 from DCNM_connect import DcnmRestApi
-from DCNM_utils import error_handler, _check_patterns
+from DCNM_utils import error_handler, _check_patterns, _check_response
 from handler import DcnmComponent, Handler
 
 logger = logging.getLogger(__name__)
@@ -216,7 +216,7 @@ class DcnmInterfaces(DcnmComponent):
         params = {'serialNumber': serial_number, 'ifName': interface}
 
         logger.info("get_all_interfaces_detail: getting interface details for serial number: {}".format(serial_number))
-        response = self._check_response(self.get(path, params=params))
+        response = _check_response(self.dcnm.get(path, params=params))
         # pprint(json.loads(response['MESSAGE']))
 
         for interface in json.loads(response['MESSAGE']):
@@ -386,7 +386,7 @@ class DcnmInterfaces(DcnmComponent):
 
         params = {'serialNumber': serial_number, 'ifName': interface}
         logger.info("get_all_interfaces_nvpairs: serial_number: {}".format(serial_number))
-        response = self._check_response(self.get(path, params=params))
+        response = _check_response(self.dcnm.get(path, params=params))
         logger.debug("get_all_interfaces_nvpairs: response: {}".format(response))
         for policy in json.loads(response['MESSAGE']):
             for interface in policy['interfaces']:

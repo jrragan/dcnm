@@ -22,14 +22,14 @@ class Handler:
     def is_callable(self, name) -> Optional[Callable]:
         logger.debug(f"Handler: is_callable: checking {name}")
         for dcnm_obj in self.dcnm_objects.values():
-            print(f"object dict: {dcnm_obj.__dict__}")
+            logger.debug(f"object dict: {dcnm_obj.__dict__}")
             if name in dcnm_obj.__class__.__dict__ or name in dcnm_obj.__dict__:
                 logger.debug(f"Handler: found name {name} in {dcnm_obj}")
                 return getattr(dcnm_obj, name)
 
     def __call__(self, name, *args, **kwargs):
         logger.debug(f"called {name}")
-        print(args)
+        logger.debug(args)
         print(kwargs)
         for dcnm_obj in self.dcnm_objects.values():
             if name in dcnm_obj.__class__.__dict__:

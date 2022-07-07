@@ -4,7 +4,7 @@ from pickle import dump
 from time import strftime, gmtime
 from typing import Union, Optional, Dict, List
 
-from dcnm.heirarchy.handler import Handler
+from handler import Handler
 from plugin_utils import PlugInEngine
 from DCNM_connect import DcnmRestApi
 from dcnm_interfaces import DcnmInterfaces
