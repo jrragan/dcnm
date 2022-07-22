@@ -1,6 +1,5 @@
 import argparse
 import logging
-import pathlib
 from functools import partial
 from pickle import dump
 from time import strftime, gmtime
@@ -8,7 +7,7 @@ from typing import Union, Optional, Dict, List
 
 import yaml
 
-from DCNM_errors import DCNMFileError, DCNMValueError
+from DCNM_errors import DCNMValueError
 from interfaces_utilities import depickle, _file_check
 from dcnm_interfaces import DcnmInterfaces
 from interfaces_utilities import read_existing_descriptions, get_interfaces_to_change, push_to_dcnm, \
@@ -126,17 +125,20 @@ def get_desc_changes(dcnm: DcnmInterfaces, pickle: str, excel: Optional[str] = N
             _dbg("switch policies", dcnm.all_switches_policies)
             _dbg("existing description from policies", existing_descriptions_from_policies)
         policy_ids: list = list({c.policyId for c in existing_descriptions_from_policies})
-        if verbose: _dbg("deleting policy ids", policy_ids)
+        if verbose:
+            _dbg("deleting policy ids", policy_ids)
         # delete the policy
         dcnm.delete_switch_policies(list(policy_ids))
         existing_descriptions: Dict[tuple, str] = {k: v for c in existing_descriptions_from_policies for k, v in
                                                    c.info.items()}
-        if verbose: _dbg("existing descriptions from switch policies", existing_descriptions)
+        if verbose:
+            _dbg("existing descriptions from switch policies", existing_descriptions)
         with open(pickle, 'wb') as f:
             dump(dcnm.all_switches_policies, f)
     else:
         existing_descriptions = read_existing_descriptions(excel)
-        if verbose: _dbg("existing descriptions from file", existing_descriptions)
+        if verbose:
+            _dbg("existing descriptions from file", existing_descriptions)
 
     def descriptions(interface: tuple, detail: dict) -> bool:
         logger.debug("start get_desc_change: interface {}".format(interface))
@@ -165,7 +167,7 @@ def get_cdp_change(interface: tuple, detail: dict, mgmt: bool = True) -> bool:
         logger.debug("interface: {}, changing cdp".format(interface))
         logger.debug("CDP_ENABLE: {}".format(detail['interfaces'][0]['nvPairs']['CDP_ENABLE']))
         return True
-    # if it's a leaf switch and and ethernet interface and not a fabric interface and cdp is enabled
+    # if it's a leaf switch and ethernet interface and not a fabric interface and cdp is enabled
     elif interface[1] in dcnm.all_leaf_switches and 'ethernet' in interface[0].lower() \
             and 'fabric' not in detail['policy'] \
             and 'no cdp enable' not in detail['interfaces'][0]['nvPairs']['CONF']:
@@ -252,7 +254,8 @@ def _normal_deploy(args: argparse.Namespace, dcnm: DcnmInterfaces):
     push changes to dcnm, deploy changes to fabric and verify changes based on cli args
     """
     logger.info("_normal_deploy: Pushing to DCNM and Deploying")
-    if args.verbose: _dbg("Pushing to DCNM and Deploying")
+    if args.verbose:
+        _dbg("Pushing to DCNM and Deploying")
     serials = _get_serial_numbers(args)
     # get interface info for these serial numbers
     dcnm.get_interfaces_nvpairs(serial_numbers=serials)
@@ -318,7 +321,8 @@ def _get_serial_numbers(args: argparse.Namespace):
         if not serials:
             _failed_dbg("No Serial Numbers Provided!", ("No Serial Numbers Provided!",))
             raise DCNMValueError("No Serial Numbers Provided!")
-        if args.verbose: _dbg("switch serial numbers provided", serials)
+        if args.verbose:
+            _dbg("switch serial numbers provided", serials)
     return serials
 
 
@@ -334,7 +338,8 @@ def _fallback(args: argparse.Namespace, dcnm: DcnmInterfaces):
 
     fallback to original config: push changes to dcnm, deploy changes to fabric and verify changes based on cli args
     """
-    if args.verbose: _dbg("FALLING BACK!")
+    if args.verbose:
+        _dbg("FALLING BACK!")
     logger.info("FALLING BACK")
     serials = _get_serial_numbers(args)
     if args.switch_deploy:
@@ -347,7 +352,8 @@ def _fallback(args: argparse.Namespace, dcnm: DcnmInterfaces):
             _dbg("leaf switches", dcnm.all_leaf_switches.keys())
 
     interfaces_existing_conf = depickle(args.icpickle)
-    if args.verbose: _dbg("these interface configs will be restored", interfaces_existing_conf)
+    if args.verbose:
+        _dbg("these interface configs will be restored", interfaces_existing_conf)
 
     policy_ids: Union[list, None] = None
     if args.description and not args.excel:
@@ -358,7 +364,8 @@ def _fallback(args: argparse.Namespace, dcnm: DcnmInterfaces):
                 dcnm.post_new_policy(policy)
                 policy_ids.add(policy["policyId"])
         policy_ids: list = list(policy_ids)
-        if args.verbose: _dbg("these switch policies will be restored", interface_desc_policies)
+        if args.verbose:
+            _dbg("these switch policies will be restored", interface_desc_policies)
     _deploy_stub(args, dcnm, interfaces_existing_conf, policy_ids, serials)
 
 
@@ -398,10 +405,12 @@ if __name__ == '__main__':
     logger.critical("Started")
 
     logger.debug(args)
-    if args.verbose: _dbg("args:", args)
+    if args.verbose:
+        _dbg("args:", args)
     # prompt stdin for username and password
     print("args parsed -- Running in %s mode" % mode)
-    if args.verbose: _dbg("Connecting to DCNM...")
+    if args.verbose:
+        _dbg("Connecting to DCNM...")
     dcnm = DcnmInterfaces(args.dcnm, dryrun=args.dryrun)
     dcnm.login(username=args.username)
 

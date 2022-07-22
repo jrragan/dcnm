@@ -48,6 +48,21 @@ class Switch:
             output_str = f"{output_str}\n{key} = {item}"
         return output_str
 
+    def __getitem__(self, key):
+        return self.__getattribute__(key)
+
+    def __setitem__(self, key, value):
+        self.__setattr__(key, value)
+
+    def __delitem__(self, key):
+        self.__delattr__(key)
+
+    def __missing__(self, key):
+        raise KeyError(f"Missing some case variant of {key!r}")
+
+    def __iter__(self):
+        return iter(list(self.__dict__.items()))
+
 
 class DcnmSwitches(DcnmComponent):
     def __init__(self, handler: Handler, dcnm_connector: DcnmRestApi):
@@ -534,9 +549,9 @@ class DcnmSwitches(DcnmComponent):
 
 if __name__ == 'main':
     print('top')
-    ADDRESS = '10.0.17.99'
-    USERNAME = 'rragan'
-    PASSWORD = 'MVhHuBr3'
+    ADDRESS = None
+    USERNAME = None
+    PASSWORD = None
     SCREENLOGLEVEL = logging.DEBUG
     FILELOGLEVEL = logging.DEBUG
     logformat = logging.Formatter(
@@ -558,7 +573,7 @@ if __name__ == 'main':
     logger.critical("Started")
     # prompt stdin for username and password
     dcnm = DcnmRestApi(ADDRESS, dryrun=True)
-    dcnm.login(username=USERNAME, password=PASSWORD)
+    dcnm.logon(username=USERNAME, password=PASSWORD)
     plugins = PlugInEngine()
     handler = Handler(dcnm)
     # handler.get_interfaces_nvpairs(save_to_file='all_interfaces.json', serial_numbers=['FDO24261WAT', 'FDO242702QK'])

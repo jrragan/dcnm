@@ -49,10 +49,10 @@ class DCNMConnectionError(Exception):
             setattr(self, k, v)
 
 
-class AuthenticationError(Exception):
+class DCNMAuthenticationError(Exception):
 
     def __init__(self, message, *args, **kwargs):
-        super(AuthenticationError, self).__init__(message)
+        super(DCNMAuthenticationError, self).__init__(message)
         for k, v in iteritems(kwargs):
             setattr(self, k, v)
 

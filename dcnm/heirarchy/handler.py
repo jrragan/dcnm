@@ -14,9 +14,9 @@ class HandlerError(Exception):
 
 
 class Handler:
-    def __init__(self, dcnm: DcnmRestApi, dir='.'):
+    def __init__(self, dcnm: DcnmRestApi, directory='.'):
         self.dcnm = dcnm
-        files = self._get_module_list(dir)
+        files = self._get_module_list(directory)
         self.dcnm_objects = self._import_dcnm_objects(files)
 
     def is_callable(self, name) -> Optional[Callable]:
@@ -79,6 +79,12 @@ class Handler:
             return _method
         else:
             return attribute
+
+    def __dir__(self):
+        dirs =  list(self)
+        for dcnm_obj in self.dcnm_objects.values():
+         dirs += dir(dcnm_obj)
+        return dirs
 
 
 class Singleton(type):

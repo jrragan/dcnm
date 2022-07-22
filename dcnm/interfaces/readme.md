@@ -2459,14 +2459,11 @@ defaultdict(<class 'list'>,
 ============================================================
 existing description from policies
 ============================================================
-[InfoFromPolicies(info={('Ethernet1/7', 'FDO24261WAT'): 'Test 7', ('Ethernet1/8', 'FDO24261WAT'): 'Test 8', ('Ethernet1/10', 'FDO24261WAT'): 'Test 10', ('Ethernet1/11', 'FDO24261WAT'): 'Test 11', ('Ethernet1/12', 'FDO24261WAT'): 'Test
- 12', ('Ethernet1/13', 'FDO24261WAT'): 'Test 13'}, policyId='POLICY-582700'),
- InfoFromPolicies(info={('Ethernet1/7', 'FDO24261WAT'): 'Test 7', ('Ethernet1/8', 'FDO24261WAT'): 'Test 8', ('Ethernet1/10', 'FDO24261WAT'): 'Test 10', ('Ethernet1/11', 'FDO24261WAT'): 'Test 11', ('Ethernet1/12', 'FDO24261WAT'): 'Test
- 12', ('Ethernet1/13', 'FDO24261WAT'): 'Test 13'}, policyId='POLICY-5421000'),
- InfoFromPolicies(info={('Ethernet1/7', 'FDO24261WAT'): 'Test 7', ('Ethernet1/8', 'FDO24261WAT'): 'Test 8', ('Ethernet1/10', 'FDO24261WAT'): 'Test 10', ('Ethernet1/11', 'FDO24261WAT'): 'Test 11', ('Ethernet1/12', 'FDO24261WAT'): 'Test
- 12', ('Ethernet1/13', 'FDO24261WAT'): 'Test 13'}, policyId='POLICY-5421040'),
- InfoFromPolicies(info={('Ethernet1/12', 'FDO242702QK'): 'Test 12', ('Ethernet1/13', 'FDO242702QK'): 'Test 13', ('Ethernet1/10', 'FDO242702QK'): 'Test 10', ('Ethernet1/11', 'FDO242702QK'): 'Test 11'}, policyId='POLICY-5421060'),      
- InfoFromPolicies(info={('Ethernet1/12', 'FDO242702QK'): 'Test 12', ('Ethernet1/13', 'FDO242702QK'): 'Test 13', ('Ethernet1/10', 'FDO242702QK'): 'Test 10', ('Ethernet1/11', 'FDO242702QK'): 'Test 11'}, policyId='POLICY-5421020')]      
+[InfoFromPolicies(info={('Ethernet1/7', 'FDO24261WAT'): 'Test 7', ('Ethernet1/8', 'FDO24261WAT'): 'Test 8'}, policyId='POLICY-582700'),
+ InfoFromPolicies(info={('Ethernet1/10', 'FDO24261WAT'): 'Test 10', ('Ethernet1/11', 'FDO24261WAT'): 'Test 11'}, policyId='POLICY-5421000'),
+ InfoFromPolicies(info={('Ethernet1/12', 'FDO24261WAT'): 'Test 12', ('Ethernet1/13', 'FDO24261WAT'): 'Test 13'}, policyId='POLICY-5421040'),
+ InfoFromPolicies(info={('Ethernet1/12', 'FDO242702QK'): 'Test 12', ('Ethernet1/13', 'FDO242702QK'): 'Test 13'}, policyId='POLICY-5421060'),
+ InfoFromPolicies(info={('Ethernet1/10', 'FDO242702QK'): 'Test 10', ('Ethernet1/11', 'FDO242702QK'): 'Test 11'}, policyId='POLICY-5421020')]
 ============================================================
 
 ============================================================

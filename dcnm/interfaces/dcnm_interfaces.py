@@ -307,16 +307,7 @@ class DcnmInterfaces(HttpApi):
 
         path = '/control/policies/switches'
 
-        if serial_numbers and isinstance(serial_numbers, (list, tuple)):
-            params = {'serialNumber': ','.join(serial_numbers)}
-        elif serial_numbers and isinstance(serial_numbers, str):
-            params = {'serialNumber': serial_numbers}
-        elif not self.all_leaf_switches and not self.all_notleaf_switches:
-            raise DCNMSwitchesPoliciesParameterError("Provide either a list of serial numbers or first run either"
-                                                     "get_all_switches or get_switches_by_serial_numbers")
-        else:
-            params = {
-                'serialNumber': ','.join(list(self.all_leaf_switches.keys()) + list(self.all_notleaf_switches.keys()))}
+        params = self.determine_params(serial_numbers)
 
         logger.info("get_switches_policies: getting switch policies for serial number: {}".format(serial_numbers))
         response = self._check_response(self.get(path, params=params))
@@ -384,6 +375,19 @@ class DcnmInterfaces(HttpApi):
         if save_to_file is not None:
             with open(save_to_file, 'w') as f:
                 f.write(str(self.all_switches_policies))
+
+    def determine_params(self, serial_numbers):
+        if serial_numbers and isinstance(serial_numbers, (list, tuple)):
+            params = {'serialNumber': ','.join(serial_numbers)}
+        elif serial_numbers and isinstance(serial_numbers, str):
+            params = {'serialNumber': serial_numbers}
+        elif not self.all_leaf_switches and not self.all_notleaf_switches:
+            raise DCNMSwitchesPoliciesParameterError("Provide either a list of serial numbers or first run either"
+                                                     "get_all_switches or get_switches_by_serial_numbers")
+        else:
+            params = {
+                'serialNumber': ','.join(list(self.all_leaf_switches.keys()) + list(self.all_notleaf_switches.keys()))}
+        return params
 
     @error_handler("ERROR: get_vpc_pair: getting vpc pairs for serial number")
     def get_vpc_pair(self, serial_number: str) -> Optional[str]:
@@ -1573,8 +1577,8 @@ class DcnmInterfaces(HttpApi):
                         del interfaces_nv_pairs_local[interface]
                         continue
 
-                if config:
-                    if DcnmInterfaces._check_patterns(config, interface_policy['interfaces'][0]['nvPairs']['CONF']):
+                if non_config:
+                    if DcnmInterfaces._check_patterns(non_config, interface_policy['interfaces'][0]['nvPairs']['CONF']):
                         del interfaces_nv_pairs_local[interface]
                         continue
 
@@ -1602,10 +1606,11 @@ class DcnmInterfaces(HttpApi):
         :param config: config to match within switch policies, this is a regex that may contain groups
         :type config: str
         :param key_tuple: if provided, each int represents a group value to include in the dictionary key of the
-          returned dictionary. serial number is always appended as the final tuple value
+          returned dictionary. serial number is always appended as the final tuple value. by default the first
+          value (result[0]) is appendend
         :type key_tuple: optional list or tuple of ints
         :param value_tuple: if provided, if provided, each int represents a group value to include in the dictionary value of the
-          returned dictionary
+          returned dictionary. by default the second item (result[1]) is appended
         :type value_tuple: optional list or tuple of ints
         :return:
         :rtype: list of dictionaries
@@ -1643,9 +1648,9 @@ class DcnmInterfaces(HttpApi):
                         else:
                             derived_value = tuple(value_tuple)
                         existing_descriptions_local[derived_key] = derived_value
-                    logger.debug("derived key {}, derived value {}".format(derived_key, derived_value))
+                        logger.debug("derived key {}, derived value {}".format(derived_key, derived_value))
 
-                    existing_descriptions_local[derived_key] = derived_value
+                    #existing_descriptions_local[derived_key] = derived_value
                 logger.debug(
                     "read_existing_descriptions_from_policies: existing descriptions: {}".format(
                         existing_descriptions_local))

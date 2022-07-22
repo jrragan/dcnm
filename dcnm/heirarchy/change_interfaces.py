@@ -245,7 +245,7 @@ if __name__ == '__main__':
     if args.verbose:
         _dbg("Connecting to DCNM...")
     dcnm = DcnmRestApi(args.dcnm, dryrun=args.dryrun)
-    dcnm.login(username=args.username)
+    dcnm.logon(username=args.username)
 
     #initialize handler
     if args.verbose:

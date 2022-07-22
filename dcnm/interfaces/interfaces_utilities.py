@@ -3,7 +3,6 @@ import pathlib
 import sys
 import traceback
 from copy import deepcopy
-from functools import partial
 from pickle import load
 from pprint import pprint
 from typing import Callable, Optional, Union, Dict, List, Tuple
@@ -52,7 +51,8 @@ def read_existing_descriptions(file: str) -> Dict[tuple, str]:
             raise ExcelFileError('One or more columns missing')
         existing_descriptions_local = df.to_dict('records')
         # print(existing_descriptions)
-        existing_descriptions_local = {(interface['interface'], interface['switch']): interface['description'] for interface
+        existing_descriptions_local = {(interface['interface'], interface['switch']): interface['description'] for
+                                       interface
                                        in
                                        existing_descriptions_local}
         logger.debug("read_existing_descriptions: existing descriptions: {}".format(existing_descriptions_local))
@@ -61,7 +61,7 @@ def read_existing_descriptions(file: str) -> Dict[tuple, str]:
 
 def get_interfaces_to_change(dcnm: DcnmInterfaces,
                              change_functions: List[Tuple[Callable, Optional[dict], bool]]) -> Tuple[
-                              Dict[tuple, dict], Dict[tuple, dict]]:
+    Dict[tuple, dict], Dict[tuple, dict]]:
     """
 
     :param dcnm: dcnm object
@@ -135,7 +135,8 @@ def verify_interface_change(dcnm: DcnmInterfaces, interfaces_will_change: dict, 
     dcnm.get_interfaces_nvpairs(save_prev=True, **kwargs)
     failed: set = set()
     success: set = set()
-    if verbose: _dbg("Verifying Interface Configurations")
+    if verbose:
+        _dbg("Verifying Interface Configurations")
     interfaces_will_change_local = deepcopy(interfaces_will_change)
     all_interfaces_nv_pairs_local = deepcopy(dcnm.all_interfaces_nvpairs)
     for interface in interfaces_will_change:
@@ -159,7 +160,8 @@ def verify_interface_change(dcnm: DcnmInterfaces, interfaces_will_change: dict, 
                         ("Failed verification config changes to for the following switches:", failed))
     else:
         logger.debug("verify_interface_change: No Failures!")
-        if verbose: _dbg("Successfully Verified All Interface Changes! Yay!")
+        if verbose:
+            _dbg("Successfully Verified All Interface Changes! Yay!")
     # return success, failed
 
 
@@ -174,9 +176,11 @@ def push_to_dcnm(dcnm: DcnmInterfaces, interfaces_to_change: dict, verbose: bool
         _failed_dbg("Failed putting to DCNM for the following: {}".format(failure),
                     ("Failed pushing config changes to DCNM for the following switches:", failure))
     else:
-        if verbose: _dbg("Successfully Pushed All Configurations!")
+        if verbose:
+            _dbg("Successfully Pushed All Configurations!")
     logger.debug("push_to_dcnm: success: {}".format(success))
-    if verbose: _dbg("Successfully Pushed Following Configs", success)
+    if verbose:
+        _dbg("Successfully Pushed Following Configs", success)
     return success
 
 
@@ -201,7 +205,8 @@ def deploy_to_fabric_using_interface_deploy(dcnm: DcnmInterfaces, deploy,
     if policies and fallback:
         if isinstance(policies, str):
             policies = [policies]
-        if verbose: _dbg("DEPLOYING POLICIES: ", policies)
+        if verbose:
+            _dbg("DEPLOYING POLICIES: ", policies)
         if dcnm.deploy_policies(policies, deploy_timeout=deploy_timeout):
             logger.debug('successfully deployed policies {}'.format(policies))
             if verbose:
@@ -223,7 +228,8 @@ def deploy_to_fabric_using_switch_deploy(dcnm: DcnmInterfaces, serial_numbers: O
     logger.info("Deploying changes to switches")
     if verbose:
         _dbg('Deploying changes to switches', serial_numbers)
-    if isinstance(serial_numbers, str): serial_numbers = [serial_numbers]
+    if isinstance(serial_numbers, str):
+        serial_numbers = [serial_numbers]
     if serial_numbers is None:
         if not (dcnm.all_leaf_switches or dcnm.all_notleaf_switches):
             raise DCNMPolicyDeployError("serial numbers must be either a string or a list\n"
@@ -241,7 +247,8 @@ def deploy_to_fabric_using_switch_deploy(dcnm: DcnmInterfaces, serial_numbers: O
             continue
         if dcnm.deploy_switch_config(serial_number):
             logger.debug('deploy returned successfully')
-            if verbose: _dbg('deploy returned successfully for: ', serial_number)
+            if verbose:
+                _dbg('deploy returned successfully for: ', serial_number)
         else:
             _failed_dbg("Failed deploying config to switch {}".format(serial_number),
                         ("Failed deploying configs to the following switch:", serial_number))
@@ -250,9 +257,11 @@ def deploy_to_fabric_using_switch_deploy(dcnm: DcnmInterfaces, serial_numbers: O
                 and dcnm.all_switches_vpc_pairs[serial_number] is not None:
             deployed.add(dcnm.all_switches_vpc_pairs[serial_number])
     logger.debug("Deployed or attempted to deploy the following: {}".format(deployed))
-    if verbose: _dbg("Deployed or attempted to deploy the following: ", deployed)
+    if verbose:
+        _dbg("Deployed or attempted to deploy the following: ", deployed)
     logger.info('waiting for switches status')
-    if verbose: _dbg('waiting for switches status')
+    if verbose:
+        _dbg('waiting for switches status')
     result = dcnm.wait_for_switches_status(serial_numbers=serial_numbers, timeout=deploy_timeout)
     if isinstance(result, bool):
         logger.debug('successfully deployed config to switch {}'.format(serial_numbers))
@@ -283,16 +292,16 @@ def _failed_dbg(log_msg: str, messages: tuple):
 
 
 def depickle(pickle_file: str):
-    depickle_conf = _file_check(pickle_file, loader=load, type='rb')
+    depickle_conf = _file_check(pickle_file, loader=load, file_type='rb')
     return depickle_conf
 
 
-def _file_check(file, loader=None, skip_load=False, as_list=False, type='r'):
+def _file_check(file, loader=None, skip_load=False, as_list=False, file_type='r'):
     file_path = pathlib.Path(file)
     if file_path.is_file():
         if not skip_load:
             try:
-                with open(file, type) as f:
+                with open(file, file_type) as f:
                     if loader is not None:
                         contents = loader(f)
                     else:
