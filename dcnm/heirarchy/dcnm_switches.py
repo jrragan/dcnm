@@ -63,6 +63,9 @@ class Switch:
     def __iter__(self):
         return iter(list(self.__dict__.items()))
 
+    def __repr__(self):
+        return f'{type(self).__name__}({self.serialNumber!r}, {self.switchRole!r}, {self.fabricName!r}'
+
 
 class DcnmSwitches(DcnmComponent):
     def __init__(self, handler: Handler, dcnm_connector: DcnmRestApi):
@@ -92,6 +95,13 @@ class DcnmSwitches(DcnmComponent):
             self.all_leaf_switches.clear()
         if self.all_notleaf_switches:
             self.all_notleaf_switches.clear()
+        self.switches.clear()
+        self.all_switches_vpc_pairs: bool = False
+        self.all_switches_details: bool = False
+        self.all_switches_policies: bool = False
+        self.all_switches_policies_prev: bool = False
+        self._switches_policies.clear()
+        self._switches_policies_prev.clear()
 
         path = '/inventory/switches'
 
@@ -109,14 +119,22 @@ class DcnmSwitches(DcnmComponent):
                                                                           switch['serialNumber'])))
 
     @error_handler("ERROR:  get_switches_by_serial_number: getting switch roles for serial number")
-    def get_switches_by_serial_number(self, serial_numbers: Optional[list] = None):
+    def get_switches_by_serial_number(self, serial_numbers: Optional[list] = None, clear_prev=False):
         if serial_numbers and not isinstance(serial_numbers, (list, tuple)):
             raise DCNMInterfacesParameterError('serial_numbers must be a list or a tuple')
         elif serial_numbers and isinstance(serial_numbers, (list, tuple)):
-            if self.all_leaf_switches:
-                self.all_leaf_switches.clear()
-            if self.all_notleaf_switches:
-                self.all_notleaf_switches.clear()
+            if clear_prev:
+                if self.all_leaf_switches:
+                    self.all_leaf_switches.clear()
+                if self.all_notleaf_switches:
+                    self.all_notleaf_switches.clear()
+                self.switches.clear()
+                self.all_switches_vpc_pairs: bool = False
+                self.all_switches_details: bool = False
+                self.all_switches_policies: bool = False
+                self.all_switches_policies_prev: bool = False
+                self._switches_policies.clear()
+                self._switches_policies_prev.clear()
 
             path = '/control/switches/roles'
             params = {'serialNumber': ','.join(serial_numbers)}
@@ -152,6 +170,21 @@ class DcnmSwitches(DcnmComponent):
             self._switches_policies_prev = {serial_number: switch.policies_prev
                                             for serial_number, switch in self.switches.items()}
         return self._switches_policies_prev
+
+    def get_switch(self, serial_number):
+        return self.switches.get(serial_number)
+
+    def delete_switch(self, serial_number):
+        if serial_number in self.switches:
+            del self.switches[serial_number]
+
+    def get_switch_policies(self, serial_number):
+        switch =  self.switches.get(serial_number)
+        return switch.policies
+
+    def delete_switch_policies(self, serial_number):
+        if serial_number in self.switches:
+            self.switches[serial_number].policies.clear()
 
     @error_handler("ERROR: get_switches_policies: getting switch policies for serial number")
     def get_switches_policies(self, serial_numbers: Optional[Union[str, list]] = None, fabric: Optional[str] = None,
@@ -339,11 +372,11 @@ class DcnmSwitches(DcnmComponent):
             logger.debug(f"filters: {filters}")
             try:
                 for sn, policy_list in deepcopy(all_switches_policies).items():
-                    #logger.debug(f"filters checking {sn}")
+                    # logger.debug(f"filters checking {sn}")
                     for policy in deepcopy(policy_list):
                         logger.debug(f"checking policy {policy}")
                         if not all(f.match(policy) for f in filters):
-                            #logger.debug(f"deleting policy {policy}")
+                            # logger.debug(f"deleting policy {policy}")
                             all_switches_policies[sn].remove(policy)
             except DCNMParameterError:
                 raise DCNMSwitchesPoliciesParameterError("description must be a string or a list of strings\n"
@@ -546,6 +579,7 @@ class DcnmSwitches(DcnmComponent):
         bad_results: dict = {key: value for key, value in response.items() if value != status}
         logger.critical("ERROR: These switches did not achieve the desired status: {}".format(bad_results))
         return bad_results
+
 
 if __name__ == 'main':
     print('top')
