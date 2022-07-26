@@ -80,6 +80,9 @@ class DcnmFabric(DcnmComponent):
         for fabric in json.loads(response['MESSAGE']):
             self.fabrics[fabric['fabricName']] = fabric
 
+    def get_fabric(self, fabric_name):
+        return self.fabrics.get(fabric_name)
+
     @error_handler("ERROR: get_fabric_swtiches_detail: getting switch details for all fabric switches")
     def get_fabric_switches_details(self, fabric: str) -> dict:
         local_all_switches_details: Dict[tuple, dict] = {}

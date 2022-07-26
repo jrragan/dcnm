@@ -476,6 +476,12 @@ class DcnmInterfaces(DcnmComponent):
             with open(save_to_file, 'w') as f:
                 f.write(str(self.all_interfaces_nvpairs))
 
+    def get_interface_details(self, serial_number, interface):
+        return self.all_interfaces_details.get((interface, serial_number))
+
+    def get_interface_nvpairs(self, serial_number, interface):
+        return self.all_interfaces_nvpairs.get((interface, serial_number))
+
     @staticmethod
     def get_filtered_interfaces_nvpairs(interfaces_nv_pairs: dict, policy: Optional[Union[str, List[str]]] = None,
                                         CONF: Optional[Union[str, List[str]]] = None,
