@@ -66,7 +66,7 @@ class PlugInInitializationError(Exception):
 
 
 def singleton(cls):
-    """Make a class a Singleton class (only one instance)"""
+    """Make a class a SingletonMeta class (only one instance)"""
 
     @functools.wraps(cls)
     def wrapper_singleton(*args, **kwargs):

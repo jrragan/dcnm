@@ -4,12 +4,12 @@ from typing import Optional, Union
 from DCNM_connect import DcnmRestApi
 from DCNM_errors import DCNMPolicyDeployError
 from DCNM_utils import spinner, _check_action_response
-from handler import Handler, DcnmComponent, Singleton
+from handler import Handler, DcnmComponent, SingletonMeta
 
 logger = logging.getLogger('dcnm_deploys')
 
 
-class DeployDcnmPolicy(DcnmComponent, metaclass=Singleton):
+class DeployDcnmPolicy(DcnmComponent, metaclass=SingletonMeta):
     def __init__(self, handler: Handler, dcnm_connector: DcnmRestApi):
         super().__init__(handler, dcnm_connector)
 

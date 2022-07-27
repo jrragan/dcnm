@@ -64,7 +64,7 @@ class Switch:
         return iter(list(self.__dict__.items()))
 
     def __repr__(self):
-        return f'{type(self).__name__}({self.serialNumber!r}, {self.switchRole!r}, {self.fabricName!r}'
+        return f'{type(self).__name__}({self.serialNumber!r}, {self.switchRole!r}, {self.fabricName!r})'
 
 
 class DcnmSwitches(DcnmComponent):
