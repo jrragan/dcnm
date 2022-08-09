@@ -1,9 +1,11 @@
 import json
 import logging
 from copy import deepcopy
+from pprint import pprint
 from typing import Dict, Optional, Union, List, Tuple
 
 from DCNM_errors import DCNMParameterError, DCNMInterfacesParameterError
+from plugin_utils import PlugInEngine
 from filters import filterfactory
 from DCNM_connect import DcnmRestApi
 from DCNM_utils import error_handler, _check_patterns, _check_response
@@ -427,8 +429,47 @@ class DcnmInterfaces(DcnmComponent):
         copy to attribute all_interfaces_nvpairs_prev
         :type save_prev: bool
 
-        pulls all interface policy information from dcnm for a list of serial numbers.
+        pulls all interface policy information from dcnm for a list of switch serial numbers.
         saves to a dictionary of the following form with the attribute name all_interfaces_nvpairs
+
+        {
+        ('Ethernet1/38', 'FDO242600CW'): {'interfaces': [{'ifName': 'Ethernet1/38',
+                                               'nvPairs': {'ADMIN_STATE': 'true',
+                                                           'ALLOWED_VLANS': 'none',
+                                                           'BPDUGUARD_ENABLED': 'no',
+                                                           'CONF': 'no cdp '
+                                                                   'enable',
+                                                           'DESC': '',
+                                                           'GF': '',
+                                                           'INTF_NAME': 'Ethernet1/38',
+                                                           'MTU': 'jumbo',
+                                                           'POLICY_DESC': '',
+                                                           'POLICY_ID': 'POLICY-5247430',
+                                                           'PORTTYPE_FAST_ENABLED': 'true',
+                                                           'PRIORITY': '450',
+                                                           'PTP': 'false',
+                                                           'SPEED': 'Auto'},
+                                               'serialNumber': 'FDO242600CW'}],
+                               'policy': 'int_trunk_host_11_1'},
+        ('Ethernet1/38', 'FDO24261WAT'): {'interfaces': [{'ifName': 'Ethernet1/38',
+                                               'nvPairs': {'ADMIN_STATE': 'true',
+                                                           'ALLOWED_VLANS': 'none',
+                                                           'BPDUGUARD_ENABLED': 'no',
+                                                           'CONF': 'no cdp '
+                                                                   'enable',
+                                                           'DESC': '',
+                                                           'GF': '',
+                                                           'INTF_NAME': 'Ethernet1/38',
+                                                           'MTU': 'jumbo',
+                                                           'POLICY_DESC': '',
+                                                           'POLICY_ID': 'POLICY-5258530',
+                                                           'PORTTYPE_FAST_ENABLED': 'true',
+                                                           'PRIORITY': '450',
+                                                           'PTP': 'false',
+                                                           'SPEED': 'Auto'},
+                                               'serialNumber': 'FDO24261WAT'}],
+                               'policy': 'int_trunk_host_11_1'}
+                               }
         """
         logger.info("get interfaces nvpairs")
         if self.all_interfaces_nvpairs and not save_prev:
@@ -585,8 +626,9 @@ class DcnmInterfaces(DcnmComponent):
                             continue
 
             except DCNMParameterError:
-                logger.error("ERROR: get_filtered_interfaces_nvpairs: Failed filtering nvpairs dictionary for {}".format(
-                    interfaces_nv_pairs))
+                logger.error(
+                    "ERROR: get_filtered_interfaces_nvpairs: Failed filtering nvpairs dictionary for {}".format(
+                        interfaces_nv_pairs))
                 logger.error(
                     "ERROR: get_filtered_interfaces_nvpairs: Error in filters: policy {} or config {} or nv_pairs {}".format(
                         policy, CONF, nvPairs))
@@ -635,8 +677,9 @@ class DcnmInterfaces(DcnmComponent):
                             continue
 
             except DCNMParameterError:
-                logger.error("ERROR: get_filtered_interfaces_details: Failed filtering details dictionary for {}".format(
-                    interfaces_details))
+                logger.error(
+                    "ERROR: get_filtered_interfaces_details: Failed filtering details dictionary for {}".format(
+                        interfaces_details))
                 logger.error(
                     "ERROR: get_filtered_interfaces_details: Error in filters: policy {} or oper {}".format(
                         policy, operStatus))
@@ -644,3 +687,43 @@ class DcnmInterfaces(DcnmComponent):
                                                    "policy must be a string or a list of strings\n"
                                                    "oper must be a string or a list of strings")
         return interfaces_details_local
+
+
+print(__name__)
+if __name__ == '__main__':
+    print('top')
+    ADDRESS = '10.0.2.248'
+    USERNAME = None
+    PASSWORD = None
+    SCREENLOGLEVEL = logging.DEBUG
+    FILELOGLEVEL = logging.DEBUG
+    logformat = logging.Formatter(
+        '%(asctime)s: %(process)d - %(threadName)s - %(funcName)s - %(name)s - %(levelname)s - message: %(message)s')
+
+    logging.basicConfig(level=SCREENLOGLEVEL,
+                        format='%(asctime)s: %(process)d - %(threadName)s - %(funcName)s - %(name)s - %(levelname)s - %(message)s')
+
+    # screen handler
+    # ch = logging.StreamHandler()
+    # ch.setLevel(SCREENLOGLEVEL)
+    # ch.setFormatter(logformat)
+    #
+    # logging.getLogger('').addHandler(ch)
+
+    logger = logging.getLogger('dcnmswitches')
+
+    print("starting")
+    logger.critical("Started")
+    # prompt stdin for username and password
+    dcnm = DcnmRestApi(ADDRESS, dryrun=True)
+    dcnm.logon(username=USERNAME, password=PASSWORD)
+    plugins = PlugInEngine()
+    handler = Handler(dcnm)
+    # pprint(handler.all_interfaces_nvpairs)
+    # dcnm.get_all_switches()
+    handler.get_interfaces_nvpairs(serial_numbers=['9Y04VBM75I8', '9A1R3QS819Z'])
+    print("=" * 40)
+    print(len(handler.all_interfaces_nvpairs))
+    pprint(handler.all_interfaces_nvpairs)
+    print("=" * 40)
+    print("=" * 40)
