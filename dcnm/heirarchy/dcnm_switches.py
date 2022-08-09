@@ -5,7 +5,7 @@ from copy import deepcopy
 from pickle import dump
 from pprint import pprint
 from time import time, sleep
-from typing import Optional, Union, Dict, List, Tuple
+from typing import Optional, Union, Dict, List, Tuple, Iterable
 
 from DCNM_errors import DCNMInterfacesParameterError, DCNMSwitchesPoliciesParameterError, \
     DCNMParameterError, DCNMSwitchesSwitchesParameterError, DCNMSwitchStatusParameterError, DCNMSwitchStatusError
@@ -30,7 +30,7 @@ class Switch:
     def add_details(self, details: dict):
         self.__dict__.update(details)
 
-    def add_policies(self, policies):
+    def add_policies(self, policies: Union[dict, list]):
         if isinstance(policies, list):
             self.policies = self.policies + policies
         elif isinstance(policies, dict):
@@ -58,7 +58,7 @@ class Switch:
         self.__delattr__(key)
 
     def __missing__(self, key):
-        raise KeyError(f"Missing some case variant of {key!r}")
+        raise KeyError(f"Missing key value {key!r}")
 
     def __iter__(self):
         return iter(list(self.__dict__.items()))
@@ -179,7 +179,7 @@ class DcnmSwitches(DcnmComponent):
             del self.switches[serial_number]
 
     def get_switch_policies(self, serial_number):
-        switch =  self.switches.get(serial_number)
+        switch = self.switches.get(serial_number)
         return switch.policies
 
     def delete_switch_policies(self, serial_number):
@@ -401,7 +401,8 @@ class DcnmSwitches(DcnmComponent):
             with open(save_to_file, 'w') as f:
                 f.write(str(self.switches_policies))
 
-    def determine_parameters(self, serial_numbers):
+    def determine_parameters(self, serial_numbers: Optional[Union[Iterable, str]] = None):
+        """Return serial numbers as dictionary Requests can use to construct HTTP parameters"""
         if serial_numbers and isinstance(serial_numbers, (list, tuple)):
             params = {'serialNumber': ','.join(serial_numbers)}
         elif serial_numbers and isinstance(serial_numbers, str):
@@ -427,6 +428,7 @@ class DcnmSwitches(DcnmComponent):
         return None
 
     def get_switches_vpc_pairs(self):
+        """For each switch get the serial number of the vpc peer switch"""
         if not self.switches:
             raise DCNMSwitchesSwitchesParameterError("You must first run either get_all_switches or "
                                                      "get_switches_by_serial_numbers")
@@ -444,7 +446,17 @@ class DcnmSwitches(DcnmComponent):
     def get_switches_details(self, serial_numbers: Optional[Union[List[str], Tuple[str], str]] = None,
                              fabric: Optional[str] = None,
                              save_to_file: Optional[str] = None):
+        """
 
+        :param serial_numbers: serial numbers of switches interested in
+        :type serial_numbers: Optional[Union[List[str], Tuple[str], str]]
+        :param fabric: fabric interested in, optional
+        :type fabric: str
+        :param save_to_file: if str, save the information to a file where the str is the name of the file
+        :type save_to_file: None or str
+
+        Pull the details for each switch serial number
+        """
         if serial_numbers and isinstance(serial_numbers, str):
             serial_numbers = [serial_numbers]
         elif serial_numbers is None:
@@ -581,9 +593,9 @@ class DcnmSwitches(DcnmComponent):
         return bad_results
 
 
-if __name__ == 'main':
+if __name__ == '__main__':
     print('top')
-    ADDRESS = None
+    ADDRESS = '10.0.2.248'
     USERNAME = None
     PASSWORD = None
     SCREENLOGLEVEL = logging.DEBUG
@@ -613,7 +625,7 @@ if __name__ == 'main':
     # handler.get_interfaces_nvpairs(save_to_file='all_interfaces.json', serial_numbers=['FDO24261WAT', 'FDO242702QK'])
     # pprint(handler.all_interfaces_nvpairs)
     # dcnm.get_all_switches()
-    handler.get_switches_by_serial_number(serial_numbers=['FDO24261WAT', 'FDO242702QK'])
+    handler.get_switches_by_serial_number(serial_numbers=['9Y04VBM75I8', '9A1R3QS819Z'])
     print("=" * 40)
     print(len(handler.all_leaf_switches))
     print(handler.all_leaf_switches)

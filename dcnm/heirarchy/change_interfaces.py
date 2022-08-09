@@ -4,13 +4,12 @@ from pickle import dump
 from time import strftime, gmtime
 from typing import Union, Optional, Dict, List
 
-from handler import Handler
-from plugin_utils import PlugInEngine
 from DCNM_connect import DcnmRestApi
-from dcnm_interfaces import DcnmInterfaces
+from handler import Handler
 from interfaces_utilities import depickle, _get_serial_numbers
 from interfaces_utilities import get_interfaces_to_change, push_to_dcnm, \
     deploy_to_fabric_using_interface_deploy, verify_interface_change, _dbg, deploy_to_fabric_using_switch_deploy
+from plugin_utils import PlugInEngine
 
 
 def command_args(plugins: List[str]) -> argparse.Namespace:
@@ -100,23 +99,21 @@ def command_args(plugins: List[str]) -> argparse.Namespace:
 def _normal_deploy(args: argparse.Namespace, handler: Handler, plugins: PlugInEngine):
     """
 
-    :param args:
-    :type args:
-    :param dcnm:
-    :type dcnm:
-    :return:
-    :rtype:
+    :param args: cli options provided by user
+    :type args: argparse.Namespace
+    :param handler: object responsible for finding correct dcnm-interfacing object for a method or attribute
+    request
+    :type handler: Handler
+    :param plugins: object responsible for running user specified plugins for choosing interfaces to change
+    :type: plugins: PlugInEngine
 
-    push changes to dcnm, deploy changes to fabric and verify changes based on cli args
+    master function to push changes to dcnm, deploy changes to fabric and verify changes based on cli args
     """
     logger.info("_normal_deploy: Pushing to DCNM and Deploying")
     if args.verbose:
         _dbg("Pushing to DCNM and Deploying")
     serials = _get_serial_numbers(args)
-    # get interface info for these serial numbers
     handler.get_interfaces_nvpairs(serial_numbers=serials)
-    # if args.verbose: _dbg("interfaces details and nvpairs", dcnm.all_interfaces_nvpairs)
-    # get role and fabric info for these serial numbers
     if args.all:
         handler.get_all_switches()
     else:
@@ -125,17 +122,6 @@ def _normal_deploy(args: argparse.Namespace, handler: Handler, plugins: PlugInEn
         _dbg("number of leaf switches", len(handler.all_leaf_switches))
         _dbg("leaf switches", handler.all_leaf_switches)
     policy_ids: Union[set, list, None] = None
-    # if args.description:
-    #     _dbg("Adding Description Changes")
-    #     changes_to_make.append(
-    #         (get_desc_changes(dcnm, args.pickle, excel=args.excel, verbose=args.verbose), None, False))
-    # if args.cdp:
-    #     _dbg("Adding Disabling of CDP")
-    #     changes_to_make.append((get_cdp_change, {'mgmt': args.mgmt}, False))
-    # if args.orphan:
-    #     _dbg("Adding Enabling of Orphan Ports")
-    #     changes_to_make.append((get_orphanport_change(dcnm, uplinks_file='uplinks.yaml', serials=serials),
-    #                             None, True))
     interfaces_will_change, interfaces_existing_conf = get_interfaces_to_change(handler, plugins, args, serials)
     with open(args.icpickle, 'wb') as f:
         dump(interfaces_existing_conf, f)
@@ -159,14 +145,6 @@ def _deploy_stub(args: argparse.Namespace, handler: Handler, interfaces_will_cha
 
 def _fallback(args: argparse.Namespace, handler: Handler, plugins: PlugInEngine):
     """
-
-    :param args:
-    :type args:
-    :param dcnm:
-    :type dcnm:
-    :return:
-    :rtype:
-
     fallback to original config: push changes to dcnm, deploy changes to fabric and verify changes based on cli args
     """
     if args.verbose:
@@ -253,12 +231,18 @@ if __name__ == '__main__':
     handler = Handler(dcnm)
 
     #passing selected plugins
+    if args.verbose:
+        _dbg("Initializing Plugins...")
     plugins.set_plugins(args.plugins)
     if not args.backout:
+        if args.verbose:
+            _dbg("Normal Deploy...")
         _normal_deploy(args, handler, plugins)
 
     # Fallback
     else:
+        if args.verbose:
+            _dbg("Fallback...")
         _fallback(args, handler, plugins)
 
     print('=' * 40)
