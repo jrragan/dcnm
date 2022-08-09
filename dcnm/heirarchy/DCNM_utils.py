@@ -11,7 +11,8 @@ from pprint import pprint
 from time import time, sleep
 from typing import Dict, Optional, Union, List, Tuple, Any
 
-from DCNM_errors import DCNMServerResponseError, DCNMParameterError
+from DCNM_errors import DCNMServerResponseError, DCNMParameterError, DCNMConnectionError, DCNMAuthenticationError, \
+    DCNMUnauthorizedError
 from policies import InfoFromPolicies
 
 logger = logging.getLogger('dcnm_utils')
@@ -23,7 +24,7 @@ def error_handler(msg):
         def wrapper_decorator(*args, **kwargs):
             try:
                 value = func(*args, **kwargs)
-            except DCNMServerResponseError as e:
+            except (DCNMConnectionError, DCNMServerResponseError) as e:
                 logger.debug(e.args)
                 e = eval(e.args[0])
                 if isinstance(e['DATA'], (list, tuple)):
@@ -31,6 +32,8 @@ def error_handler(msg):
                 elif isinstance(e['DATA'], str):
                     logger.critical("{} - {}".format(msg, e['DATA']))
                 logger.debug("{}".format(e))
+                raise
+            except (DCNMUnauthorizedError, DCNMAuthenticationError):
                 raise
             return value
 
@@ -56,14 +59,16 @@ def spinner(msg="Elapsed Time"):
             start = time()
             _spin_thread = threading.Thread(target=_spin, args=(msg, start, cycle(r'-\|/'), _stop_spin))
             _spin_thread.start()
+            value = None
             try:
                 value = func(*args, **kwargs)
             except Exception as e:
                 exc_type, exc_value, exc_traceback = sys.exc_info()
                 stacktrace = traceback.extract_tb(exc_traceback)
-                logger.debug(
-                    "response {}".format(value))
-                logger.debug(sys.exc_info())
+                if value:
+                    logger.debug(
+                        "response {}".format(value))
+                logger.exception("Error in Spinner or in Decorated Function", exc_info=sys.exc_info())
                 logger.debug(stacktrace)
                 raise
             finally:

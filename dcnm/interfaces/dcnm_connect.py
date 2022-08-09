@@ -26,16 +26,17 @@ REQUESTS_EXCEPTIONS = OrderedDict(
      requests.exceptions.RequestException: "Requests Error sending {} method to URL {} DCNM controller: {}",
      DCNMAuthenticationError: None,
      DCNMConnectionError: None,
+     DCNMUnauthorizedError: None,
      Exception: "Unknown Error sending {} request to URL {} on DCNM: {}"
      })
 
 URL_CHECK_EXCEPTIONS = OrderedDict(
     {requests.ConnectTimeout: "Timeout on attempt to connect to url {} on DCNM controller: {}",
      requests.ConnectionError: "Error on attempt to connect to url {} on DCNM controller: {}",
-
      requests.exceptions.RequestException: "Please verify that the DCNM controller HTTPS URL {} is valid and try again: error message {}",
      DCNMAuthenticationError: None,
      DCNMConnectionError: None,
+     DCNMUnauthorizedError: None,
      Exception: "Unknown Error checking URL {} on DCNM controller: {}",
      })
 
@@ -324,10 +325,8 @@ class HttpApi:
 
         if 200 <= rc <= 299:
             return self._return_info(rc, method, path, msg, jrd)
-        if rc == 500:
-            raise DCNMAuthenticationError(self._return_info(rc, "POST", path, msg))
         if rc >= 400:
-            msg = "RETURN_CODE: {}".format(rc)
+            msg = "RETURN_CODE: {}. Original message: {}".format(rc, msg)
             if not skip_authcheck and rc == 401:
                 msg = "Unauthorized Access to API"
                 if self.auth:
@@ -337,7 +336,7 @@ class HttpApi:
                     if rc == code:
                         msg = err_msg
         else:
-            msg = "RETURN_CODE: {}".format(rc)
+            msg = "RETURN_CODE: {}. Original message: {}".format(rc, msg)
         raise DCNMConnectionError(self._return_info(rc, method, path, msg, jrd))
 
     @staticmethod
@@ -419,7 +418,7 @@ if __name__ == '__main__':
 
     logger.critical("Started")
     # prompt stdin for username and password
-    dcnm = DcnmRestApi(ADDRESS)
+    dcnm = HttpApi(ADDRESS)
     print("++++++++++++++++++loging on+++++++++++++++++++")
     dcnm.logon(username=USERNAME, password=PASSWORD)
     print("++++++++++++++++getting inventory++++++++++++++++")

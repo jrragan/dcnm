@@ -16,7 +16,8 @@ from typing import Union, Optional, Any, Dict, List, Tuple, Set, NamedTuple
 
 from DCNM_errors import DCNMServerResponseError, DCNMInterfacesParameterError, \
     DCNMSwitchesPoliciesParameterError, DCNMParameterError, DCNMSwitchesSwitchesParameterError, DCNMPolicyDeployError, \
-    DCNMSwitchStatusParameterError, DCNMSwitchStatusError
+    DCNMSwitchStatusParameterError, DCNMSwitchStatusError, DCNMConnectionError, DCNMUnauthorizedError, \
+    DCNMAuthenticationError
 from dcnm_connect import HttpApi
 
 logger = logging.getLogger('dcnm_interfaces')
@@ -28,7 +29,7 @@ def error_handler(msg):
         def wrapper_decorator(*args, **kwargs):
             try:
                 value = func(*args, **kwargs)
-            except DCNMServerResponseError as e:
+            except (DCNMConnectionError, DCNMServerResponseError) as e:
                 logger.debug(e.args)
                 e = eval(e.args[0])
                 if isinstance(e['DATA'], (list, tuple)):
@@ -37,11 +38,14 @@ def error_handler(msg):
                     logger.critical("{} - {}".format(msg, e['DATA']))
                 logger.debug("{}".format(e))
                 raise
+            except (DCNMUnauthorizedError, DCNMAuthenticationError):
+                raise
             return value
 
         return wrapper_decorator
 
     return decorator
+
 
 
 def _spin(msg, start, frames, _stop_spin):
