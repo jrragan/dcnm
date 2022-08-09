@@ -7,21 +7,14 @@ from copy import deepcopy
 from functools import partial
 from pickle import load
 from pprint import pprint
-from typing import Callable, Optional, Union, Dict, List, Tuple, Set
+from typing import Optional, Union, Dict, List, Tuple, Set, Callable, Iterable
 
-import pandas
-import yaml
 from colorama import init, Back, Fore, Style
-from pandas import read_excel
 
 from DCNM_errors import DCNMPolicyDeployError, DCNMValueError
 from DCNM_errors import ExcelFileError, DCNMFileError
 from handler import Handler
 from plugin_utils import PlugInEngine
-from dcnm_deploys import DeployDcnmPolicy
-from dcnm_puts import ChangeDcnmPolicy
-from dcnm_switches import DcnmSwitches
-from dcnm_interfaces import DcnmInterfaces
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +33,6 @@ def _dbg(header: str, data=None):
 
 def read_existing_descriptions(file: str) -> Dict[tuple, str]:
     """
-
     :param file: an Excel file path/name containing columns "interface", "switch" and "description"
     the switch column is the switch serial number
     :type file: str
@@ -49,6 +41,8 @@ def read_existing_descriptions(file: str) -> Dict[tuple, str]:
 
     Read in an Excel file and return a dictionary of form {(interface, switch_serial_number): interface_description}
     """
+    import pandas
+    from pandas import read_excel
     if _file_check(file, skip_load=True):
         existing_descriptions_local: dict
         logger.debug("reading excel file {}".format(file))
@@ -74,22 +68,20 @@ def get_interfaces_to_change(handler: Handler,
     Dict[tuple, dict], Dict[tuple, dict]]:
     """
 
-    :param switches: DCNM switches object
-    :type switches: DcnmSwitches
-    :param all_interfaces_nvpairs: dictionary of all interface nv pairs
-    :type all_interfaces_nvpairs: dict
-    :param change_functions: a list of tuples with each tuple of the form
-    (a function object to call, an optional dictionary containing args to pass to function, a boolean which is True
-    if the function is to run only on leaf switches)
-    :type change_functions: list[tuple[Callable, Optional[dict], bool]]
-    :return: a tuple of dictionaries
-    :rtype: tuple[dict[tuple, dict], dict[tuple, dict]]
+    :param handler: An object that provides access to DCNM-interfacing objects
+    :type handler: Handler
+    :param plugins: An object of the PlugInEngine class that provides access to plugins selected by the cli
+    :type plugins: PlugInEngine
+    :param args: cli args, required by the plugins
+    :type args: argparse.Namespace
+    :param serials: a serial number or list of serial numbers of switches
+    :type serials: list, tuple, str
+    :return: two dictionaries of interfaces, one containing the changes to make,
+    the other containing the original configuration
+    :rtype: tuple of dictionaries
 
-    provide a list of callables to apply
-    the function iterates through the interface tuple and interface policy details of the all_interfaces_nvpairs
-    parameter and provides each of those values along with the optional dictionary of parameters to each callable
-    returns two dictionaries. the first is the interfaces to change along with the changes to make and the other
-    is the original dictionary of policies
+    takes the list of interfaces provided by the handler and runs then through the cli-selected
+    plugins in the plugin engine to determine which interfaces to change
     """
     existing_interfaces = deepcopy(handler.all_interfaces_nvpairs)
     interfaces_to_change: Dict[tuple, dict] = {}
@@ -111,6 +103,22 @@ def get_interfaces_to_change(handler: Handler,
 
 
 def verify_interface_change(handler: Handler, interfaces_will_change: dict, verbose: bool = True, **kwargs):
+    """
+
+    :param handler: An object that provides access to DCNM-interfacing objects
+    :type handler: Handler
+    :param interfaces_will_change: a dictionary of interfaces
+    :type interfaces_will_change: dict
+    :param verbose: output more information if this is set
+    :type verbose: bool
+    :param kwargs:
+    :type kwargs:
+    :return: None
+    :rtype:
+
+    Pulls interface information from DCNM and compares it to the interfaces_will_change dict.
+    Displays failures.
+    """
     handler.get_interfaces_nvpairs(save_prev=True, **kwargs)
     failed: set = set()
     success: set = set()
@@ -145,7 +153,19 @@ def verify_interface_change(handler: Handler, interfaces_will_change: dict, verb
 
 
 def push_to_dcnm(handler: Handler, interfaces_to_change: dict, verbose: bool = True) -> set:
-    # make changes
+    """
+
+    :param handler: An object that provides access to DCNM-interfacing objects
+    :type handler: Handler
+    :param interfaces_will_change: a dictionary of interfaces
+    :type interfaces_will_change: dict
+    :param verbose: output more information if this is set
+    :type verbose: bool
+    :return: successful changes
+    :rtype: set
+
+    Uses the handler to push desired changes to DCNM. Displays failures. Returns successes
+    """
     success: set
     failure: set
     if verbose:
@@ -180,11 +200,28 @@ def create_deploy_list(deploy_list: Union[Set[tuple], List[tuple], Tuple[tuple]]
     return new_deploy_list
 
 
-def deploy_to_fabric_using_interface_deploy(handler: Handler, deploy,
+def deploy_to_fabric_using_interface_deploy(handler: Handler, deploy: Union[Set[tuple], List[tuple], Tuple[tuple]],
                                             policies: Optional[Union[list, tuple, str]] = None,
                                             deploy_timeout: int = 300,
                                             fallback: bool = False,
                                             verbose: bool = True):
+    """
+
+    :param handler: An object that provides access to DCNM-interfacing objects
+    :type handler: Handler
+    :param deploy: An iterable of the interface changes to deploy to the fabric
+    :type deploy: an iterable
+    :param policies: policy changes to deploy to the fabric
+    :type policies: an iterable or a string
+    :param deploy_timeout: timeout of the deploy operation, default is 300 seconds
+    :type deploy_timeout: int
+    :param fallback: True means this is a fallback operation
+    :type fallback: bool
+    :param verbose: True means to print more information
+    :type verbose: bool
+
+    Pushes interface and policy changes to the fabric using the interface deploy API
+    """
     deploy_list: list = create_deploy_list(deploy)
     if verbose:
         _dbg('Deploying changes to switches')
@@ -209,6 +246,19 @@ def deploy_to_fabric_using_interface_deploy(handler: Handler, deploy,
 
 def fallback_policy_deploy(handler: Handler,
                            policies: Union[list, tuple, str], deploy_timeout: int = 300, verbose: bool = True):
+    """
+
+    :param handler: An object that provides access to DCNM-interfacing objects
+    :type handler: Handler
+    :param policies: policy changes to deploy to the fabric
+    :type policies: an iterable or a string
+    :param deploy_timeout: timeout of the deploy operation, default is 300 seconds
+    :type deploy_timeout: int
+    :param verbose: True means to print more information
+    :type verbose: bool
+
+    Deploys previous policies during fallback operation
+    """
     if isinstance(policies, str):
         policies = [policies]
     if verbose:
@@ -226,6 +276,19 @@ def deploy_to_fabric_using_switch_deploy(handler: Handler,
                                          serial_numbers: Optional[Union[str, list, tuple]] = None,
                                          deploy_timeout: int = 300,
                                          verbose: bool = True):
+    """
+
+    :param handler: An object that provides access to DCNM-interfacing objects
+    :type handler: Handler
+    :param serial_numbers: serial numbers of swtiches
+    :type serial_numbers: iterable or str
+    :param deploy_timeout: timeout of the deploy operation, default is 300 seconds
+    :type deploy_timeout: int
+    :param verbose: True means to print more information
+    :type verbose: bool
+
+    Pushes interface and policy changes to the fabric using the switch level deploy API
+    """
     deployed: set = set()
     logger.info("Deploying changes to switches")
     if verbose:
@@ -298,7 +361,25 @@ def depickle(pickle_file: str):
     return depickle_conf
 
 
-def _file_check(file, loader=None, skip_load=False, as_list=False, file_type='r'):
+def _file_check(file: str, loader: Callable = None, skip_load: bool = False, as_list: bool = False,
+                file_type: str = 'r') -> Union[str, Iterable, bool]:
+    """
+
+    :param file: filename
+    :type file: str
+    :param loader: optional file reader
+    :type loader: callable
+    :param skip_load: don't read the file, just do the error checks
+    :type skip_load: bool
+    :param as_list: read the file contents into a list
+    :type as_list: bool
+    :param file_type: python file mode
+    :type file_type: str
+    :return: contents of the file or True if skip_load is set to True
+    :rtype:
+
+    Do various error checks for files and load contents using either a supplied loader or built-in read function
+    """
     file_path = pathlib.Path(file)
     if file_path.is_file():
         if not skip_load:
@@ -311,7 +392,7 @@ def _file_check(file, loader=None, skip_load=False, as_list=False, file_type='r'
                             contents = [item.strip() for item in f]
                         else:
                             contents = f.read()
-            except:
+            except Exception as e:
                 exc_type, exc_value, exc_traceback = sys.exc_info()
                 stacktrace = traceback.extract_tb(exc_traceback)
                 logger.debug(
@@ -344,7 +425,14 @@ def _read_serials_from_file(file: str):
     return serials
 
 
-def _get_uplinks(uplinks_file):
+def _get_uplinks(uplinks_file: str) -> Dict[str, list]:
+    """
+    :param uplinks_file: yaml file associating serial number to interfaces reserved for uplinks
+    :type uplinks_file: yaml file
+    :return: uplinks
+    :rtype: dictionary, key is serial number, value is list of uplinks
+    """
+    import yaml
     yaml_loader = partial(yaml.load, Loader=yaml.FullLoader)
     uplinks = _file_check(uplinks_file, loader=yaml_loader)
     local_uplinks: Dict[str, list] = {}
@@ -358,12 +446,6 @@ def _get_uplinks(uplinks_file):
 
 def _get_serial_numbers(args: argparse.Namespace):
     """
-
-    :param args:
-    :type args:
-    :return:
-    :rtype:
-
     get serial numbers from cli or from filename provided by cli
     """
     # get serial numbers
