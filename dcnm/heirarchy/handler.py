@@ -2,7 +2,7 @@ import importlib
 import inspect
 import logging
 import os
-from typing import Optional, Callable, List
+from typing import Optional, Callable, List, Dict
 
 from DCNM_connect import DcnmRestApi
 
@@ -26,24 +26,9 @@ class Handler(metaclass=SingletonMeta):
     def __init__(self, dcnm: DcnmRestApi, module_directory: str = '.'):
         self.dcnm = dcnm
         self.module_directory = module_directory
-        files = self._get_module_list(module_directory)
-        self.dcnm_objects = self._import_dcnm_objects(files)
-
-    def is_callable(self, name: str) -> Optional[Callable]:
-        logger.debug(f"Handler: is_callable: checking {name}")
-        for dcnm_obj in self.dcnm_objects.values():
-            logger.debug(f"object dict: {dcnm_obj.__dict__}")
-            if name in dcnm_obj.__class__.__dict__ or name in dcnm_obj.__dict__:
-                logger.debug(f"Handler: found name {name} in {dcnm_obj}")
-                return getattr(dcnm_obj, name)
-
-    def __call__(self, name, *args, **kwargs):
-        logger.debug(f"called {name}")
-        logger.debug(args)
-        print(kwargs)
-        for dcnm_obj in self.dcnm_objects.values():
-            if name in dcnm_obj.__class__.__dict__:
-                return getattr(dcnm_obj, name)(*args, **kwargs)
+        files: List[str] = self._get_module_list(module_directory)
+        self.dcnm_objects: Dict[str, object] = self._import_dcnm_objects(files)
+        self.dcnm_objects_dirs: Dict[str, List] = self._get_dcnm_objects_dirs()
 
     def _get_module_list(self, module_directory: str):
         files = [f.replace('.py', '') for f in os.listdir(module_directory) if f.startswith('dcnm_')]
@@ -54,27 +39,26 @@ class Handler(metaclass=SingletonMeta):
         dcnm_objects = {}
         for m in _modules:
             for k, v in inspect.getmembers(m):
-                if "Dcnm" in k and inspect.isclass(v):
-                    for base in v.__bases__:
-                        if 'DcnmComponent' in str(base):
-                            dcnm_objects[k] = v(self, self.dcnm)
-                            break
+                if "Dcnm" in k and inspect.isclass(v) and any(["DcnmComponent" in str(base) for base in v.__bases__]):
+                    dcnm_objects[k] = v(self, self.dcnm)
+                    break
         logger.debug(dcnm_objects)
         return dcnm_objects
 
     def __getattr__(self, name: str):
         logger.debug(f"handler: __getattr__: getting {name} of type {type(name)}")
-        attribute = self.is_callable(name)
+        dcnm_object_name = self.find_dcnm_object_attr(name)
+        attribute = getattr(self.dcnm_objects[dcnm_object_name], name, None)
         if attribute is None:
             logger.debug(f"handler: __getattr__: Cannot find attribute {name}")
             raise HandlerError(f"Handler Cannot Find Attribute {name}")
         logger.debug(f"handler: __getattr__: attribute is {attribute}")
         if callable(attribute):
             def _method(*args, **kwargs):
-                logger.debug("handler: __getattr__: tried to handle unknown method " + name)
+                logger.debug(f"handler: __getattr__: tried to handle unknown method {name}")
                 if args:
-                    logger.debug("handler: __getattr__: it had arguments: " + str(args))
-                y = self.__call__(name, *args, **kwargs)
+                    logger.debug(f"handler: __getattr__: it had arguments: {args}, {kwargs}")
+                y = attribute(*args, **kwargs)
                 logger.debug(f"handler: __getattr__: y from __call__ is {y} and is {type(y)}")
                 return y
 
@@ -82,11 +66,19 @@ class Handler(metaclass=SingletonMeta):
         else:
             return attribute
 
+    def _get_dcnm_objects_dirs(self):
+        return {name: dir(dcnm_obj) for name, dcnm_obj in self.dcnm_objects.items()}
+
+    def find_dcnm_object_attr(self, attribute):
+        for name, dir in self.dcnm_objects_dirs.items():
+            if attribute in dir:
+                return name
+
     def __dir__(self):
-        dirs = list(self)
+        dirs = object.__dir__(self)
         for dcnm_obj in self.dcnm_objects.values():
             dirs += dir(dcnm_obj)
-        return dirs
+        return sorted(list(set(dirs)))
 
     def __repr__(self):
         return f'{type(self).__name__}({self.dcnm!r}, module_directory={self.module_directory!r})'
@@ -107,3 +99,6 @@ if __name__ == '__main__':
     dcnm = DcnmRestApi('10.10.10.10')
     handler = Handler(dcnm)
     print(handler.dcnm_objects)
+    print(dir(handler))
+    print(handler.dcnm_objects_dirs)
+    print(handler.find_dcnm_object_attr("get_switch_fabric"))
