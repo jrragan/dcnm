@@ -30,22 +30,16 @@ def error_handler(msg):
             try:
                 value = func(*args, **kwargs)
             except (DCNMConnectionError, DCNMServerResponseError) as e:
-                logger.debug(e.args)
-                e = eval(e.args[0])
-                if isinstance(e['DATA'], (list, tuple)):
-                    logger.critical("{} - {}".format(msg, e['DATA'][0]['message']))
-                elif isinstance(e['DATA'], str):
-                    logger.critical("{} - {}".format(msg, e['DATA']))
-                logger.debug("{}".format(e))
+                logger.critical("{} - {}".format(msg, e))
                 raise
-            except (DCNMUnauthorizedError, DCNMAuthenticationError):
+            except (DCNMUnauthorizedError, DCNMAuthenticationError) as e:
+                logger.critical("{} - {} - Bad Credentials".format(msg, e))
                 raise
             return value
 
         return wrapper_decorator
 
     return decorator
-
 
 
 def _spin(msg, start, frames, _stop_spin):
@@ -1654,7 +1648,7 @@ class DcnmInterfaces(HttpApi):
                         existing_descriptions_local[derived_key] = derived_value
                         logger.debug("derived key {}, derived value {}".format(derived_key, derived_value))
 
-                    #existing_descriptions_local[derived_key] = derived_value
+                    # existing_descriptions_local[derived_key] = derived_value
                 logger.debug(
                     "read_existing_descriptions_from_policies: existing descriptions: {}".format(
                         existing_descriptions_local))
