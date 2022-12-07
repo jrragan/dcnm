@@ -18,14 +18,16 @@ from interfaces_utilities import read_existing_descriptions, get_interfaces_to_c
 def command_args() -> argparse.Namespace:
     """ define and parse command line arguments """
 
-    parser = argparse.ArgumentParser(description="automation of interface configuration changes via dcnm\n"
-                                                 "at least one of -c -d or -o must be included or the \n"
+    parser = argparse.ArgumentParser(description="Automation of interface configuration changes via dcnm. \n"
+                                                 "At least one of -c -d or -o must be included or the \n"
                                                  "program won't do anything")
     parser.add_argument('-a', "--dcnm", metavar="IP_or_DNS_NAME",
                         required=True,
                         help="dcnm hostname or ip address")
     parser.add_argument("-u", "--username",
                         help="DCNM username")
+    parser.add_argument("-pw", "--password",
+                        help="DCNM password")
     parser.add_argument(
         "-n",
         "--serials",
@@ -412,7 +414,7 @@ if __name__ == '__main__':
     if args.verbose:
         _dbg("Connecting to DCNM...")
     dcnm = DcnmInterfaces(args.dcnm, dryrun=args.dryrun)
-    dcnm.logon(username=args.username)
+    dcnm.logon(username=args.username, password=args.password)
 
     if not args.backout:
         _normal_deploy(args, dcnm)
@@ -421,6 +423,7 @@ if __name__ == '__main__':
     else:
         _fallback(args, dcnm)
 
+    dcnm.logout()
     print('=' * 40)
     print("FINISHED. GO GET PLASTERED!")
     print('=' * 40)
