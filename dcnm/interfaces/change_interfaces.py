@@ -210,7 +210,7 @@ def get_orphanport_change(dcnm: DcnmInterfaces, uplinks_file: str,
         if 'mgmt' not in interface[0] and \
                 interface[0] not in this_model_uplinks and \
                 ('int_trunk_host' in detail['policy'] or 'int_access_host' in detail['policy']) and \
-                'vpc orphan-port enable' not in detail['interfaces'][0]['nvPairs']['CONF']:
+                'vpc orphan-port suspend' not in detail['interfaces'][0]['nvPairs']['CONF']:
             if not detail['interfaces'][0]['nvPairs']['CONF']:
                 detail['interfaces'][0]['nvPairs']['CONF'] = 'vpc orphan-port suspend'
                 logger.debug("interface: {}, changing orphan port suspend".format(interface))
@@ -412,7 +412,7 @@ if __name__ == '__main__':
     if args.verbose:
         _dbg("Connecting to DCNM...")
     dcnm = DcnmInterfaces(args.dcnm, dryrun=args.dryrun)
-    dcnm.login(username=args.username)
+    dcnm.logon(username=args.username)
 
     if not args.backout:
         _normal_deploy(args, dcnm)

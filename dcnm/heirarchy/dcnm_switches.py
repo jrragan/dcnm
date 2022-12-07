@@ -220,7 +220,8 @@ class DcnmSwitches(DcnmComponent):
         :rtype: dict[serial_number: [list of policies]}
 
         filter out the wanted policies from all_leaf_switches_policies and all_notleaf_switches_policies and return
-        a new dictionary of those policies
+        a new dictionary of those policies. A policy is removed unless it matches all filters - i.e. all filters return
+        True
 
         {
         'FDO24261WAT': [
@@ -355,7 +356,7 @@ class DcnmSwitches(DcnmComponent):
 
         params = self.determine_parameters(serial_numbers)
 
-        logger.info("get_switches_policies: getting switch policies for serial number: {}".format(serial_numbers))
+        logger.info("get_switches_policies: getting switch policies for serial number: {}".format(params))
         response = _check_response(self.dcnm.get(path, params=params))
 
         all_switches_policies: defaultdict[List] = defaultdict(list)
@@ -627,6 +628,7 @@ if __name__ == '__main__':
     # dcnm.get_all_switches()
     handler.get_switches_by_serial_number(serial_numbers=['9Y04VBM75I8', '9A1R3QS819Z'])
     print("=" * 40)
+    print(handler.switches)
     print(len(handler.all_leaf_switches))
     print(handler.all_leaf_switches)
     # existing_descriptions = read_existing_descriptions('interface_descriptions.xlsx')
@@ -640,7 +642,7 @@ if __name__ == '__main__':
     # pprint(dcnm.all_switches_policies)
     #
     handler.get_switches_policies(templateName=r'switch_freeform\Z',
-                                  config=r"interface\s+[a-zA-Z]+\d+/?\d*\n\s+description\s+")
+                                  generatedConfig=r"interface\s+[a-zA-Z]+\d+/?\d*\n\s+description\s+")
     print("=" * 40)
     pprint(handler.switches_policies)
 
@@ -651,5 +653,5 @@ if __name__ == '__main__':
     pprint(existing_descriptions_from_policies)
     with open('switches_configuration_policies.pickle', 'wb') as f:
         dump(handler.switches_policies, f)
-    policy_ids: set = {c.policyId for c in existing_descriptions_from_policies}
+    policy_ids: set = list({c.policyId for c in existing_descriptions_from_policies})
     print(policy_ids)

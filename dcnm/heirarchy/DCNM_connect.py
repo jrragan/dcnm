@@ -249,7 +249,7 @@ class DcnmRestApi:
         if self.dryrun and method in {'post', 'put', 'delete'}:
             logger.debug("Dryrun enabled. Returning OK code for this send_request")
             return {"RETURN_CODE": 200}
-        self.check_url_connection(url, local_headers)
+        #self.check_url_connection(url, local_headers)
         info = {}
 
         try:

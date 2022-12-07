@@ -261,7 +261,9 @@ class HttpApi:
         if self.dryrun and method in {'post', 'put', 'delete'}:
             logger.debug("Dryrun enabled. Returning OK code for this send_request")
             return {"RETURN_CODE": 200}
-        self.check_url_connection(url, local_headers)
+        #Some DCNM APIs Now Respond to Head request with 500 error
+        #self.check_url_connection(url, local_headers)
+        if not self._auth: raise DCNMAuthenticationError("You have not logged in and received a Token.")
         info = {}
 
         try:
