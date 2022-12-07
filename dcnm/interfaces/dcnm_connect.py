@@ -149,7 +149,6 @@ class HttpApi:
                                                              "Invalid token. Failed to perform logout.")],
                                          skip_authcheck=True)
             logger.debug("logout: response: {}".format(info))
-            if self._auth: del (self.headers["Dcnm-Token"])
         except requests.ConnectionError as e:
             exc_type, exc_value, exc_traceback = sys.exc_info()
             stacktrace = traceback.extract_tb(exc_traceback)
