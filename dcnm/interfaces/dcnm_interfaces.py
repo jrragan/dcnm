@@ -59,7 +59,7 @@ def spinner(msg="Elapsed Time"):
             start = time()
             _spin_thread = threading.Thread(target=_spin, args=(msg, start, cycle(r'-\|/'), _stop_spin))
             _spin_thread.start()
-            value = "No Response Returned"
+            value = "No Response Received"
             try:
                 value = func(*args, **kwargs)
             except Exception as e:
