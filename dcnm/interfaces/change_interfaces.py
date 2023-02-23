@@ -1,5 +1,7 @@
 import argparse
 import logging
+import sys
+import traceback
 from functools import partial
 from pickle import dump
 from time import strftime, gmtime
@@ -7,7 +9,7 @@ from typing import Union, Optional, Dict, List
 
 import yaml
 
-from DCNM_errors import DCNMValueError
+from DCNM_errors import DCNMValueError, DCNMConnectionError
 from interfaces_utilities import depickle, _file_check
 from dcnm_interfaces import DcnmInterfaces
 from interfaces_utilities import read_existing_descriptions, get_interfaces_to_change, push_to_dcnm, \
@@ -294,12 +296,30 @@ def _normal_deploy(args: argparse.Namespace, dcnm: DcnmInterfaces):
 def _deploy_stub(args: argparse.Namespace, dcnm: DcnmInterfaces, interfaces_will_change: dict,
                  policy_ids: Optional[Union[list, tuple, str]], serials: list):
     success: set = push_to_dcnm(dcnm, interfaces_will_change, verbose=args.verbose)
-    if args.switch_deploy:
-        deploy_to_fabric_using_switch_deploy(dcnm, serials, deploy_timeout=args.timeout, verbose=args.verbose)
-    else:
-        deploy_to_fabric_using_interface_deploy(dcnm, success, policies=policy_ids, deploy_timeout=args.timeout,
-                                                fallback=args.backout,
-                                                verbose=args.verbose)
+    try:
+        if args.switch_deploy:
+            deploy_to_fabric_using_switch_deploy(dcnm, serials, deploy_timeout=args.timeout, verbose=args.verbose)
+        else:
+            deploy_to_fabric_using_interface_deploy(dcnm, success, policies=policy_ids, deploy_timeout=args.timeout,
+                                                    fallback=args.backout,
+                                                    verbose=args.verbose)
+    except DCNMConnectionError as e:
+        if e.args and e.args[0]['RETURN_CODE'] == 500 and "No Commands to execute." in e.args[0]['MESSAGE']:
+            logger.error("While Attempting to Deploy to Switches, "
+                         "DCNM Communicated That There Were No Commands to Execute.")
+            logger.error("Continuing with Verification")
+            logger.debug("_deploy_stub: No Commands to Execute: {}".format(e))
+        else:
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            logger.exception(e, exc_info=sys.exc_info())
+            logger.debug(traceback.extract_tb(exc_traceback))
+            raise
+    except:
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        logger.exception("unknown error during deploy", exc_info=sys.exc_info())
+        logger.debug(traceback.extract_tb(exc_traceback))
+        raise
+
     # Verify
     verify_interface_change(dcnm, interfaces_will_change, serial_numbers=serials, verbose=args.verbose)
 
