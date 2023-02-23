@@ -396,34 +396,36 @@ if __name__ == '__main__':
     args = command_args()
     mode = "DRYRUN" if args.dryrun else "DEPLOY"
 
+    logger = logging.getLogger('change_interfaces')
+    logger.setLevel(logging.DEBUG)
     # set up screen logging
     if args.debug:
         SCREENLOGLEVEL = logging.DEBUG
     else:
         SCREENLOGLEVEL = eval('logging.{}'.format(args.screenloglevel))
-
+    ch = logging.StreamHandler()
+    ch.setLevel(SCREENLOGLEVEL)
     print(SCREENLOGLEVEL)
 
-    logging.basicConfig(level=SCREENLOGLEVEL,
-                        format='%(asctime)s | %(process)d | %(threadName)s | (%(filename)s:%(lineno)d) | %(funcName)s | %(levelname)s | message: %(message)s')
+    formatter = logging.Formatter('%(asctime)s | %(process)d | %(threadName)s | (%(filename)s:%(lineno)d) | %(funcName)s | %(levelname)s | message: %(message)s')
+    ch.setFormatter(formatter)
 
     # set up file logging
     if args.loglevel is not None or args.loglevel == 'NONE':
         LOGFILE = "dcnm_interfaces" + strftime("_%y%m%d%H%M%S", gmtime()) + ".log"
-        logformat = logging.Formatter(
-            '%(asctime)s | %(process)d | %(threadName)s | (%(filename)s:%(lineno)d) | %(funcName)s | %(levelname)s | message: %(message)s')
         if args.debug:
             FILELOGLEVEL = logging.DEBUG
         else:
             FILELOGLEVEL = eval('logging.{}'.format(args.loglevel))
         print(FILELOGLEVEL)
         # file handler
-        ch = logging.FileHandler(LOGFILE)
-        ch.setLevel(FILELOGLEVEL)
-        ch.setFormatter(logformat)
-        logging.getLogger('').addHandler(ch)
+        fh = logging.FileHandler(LOGFILE)
+        fh.setLevel(FILELOGLEVEL)
+        fh.setFormatter(formatter)
+        logger.addHandler(fh)
 
-    logger = logging.getLogger('change_interfaces')
+    logger.addHandler(ch)
+    print(logger.hasHandlers())
     logger.critical("Started")
 
     logger.debug(args)
